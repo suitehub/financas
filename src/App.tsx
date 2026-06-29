@@ -123,14 +123,21 @@ export default function App() {
   // --- ACTIONS HANDLERS ---
 
   // Recebimentos CRUD
-  const handleSaveRecebimento = async (payload: Omit<Recebimento, 'id' | 'userId' | 'createdAt'>) => {
+  const handleSaveRecebimento = async (payloads: Omit<Recebimento, 'id' | 'userId' | 'createdAt'> | Omit<Recebimento, 'id' | 'userId' | 'createdAt'>[]) => {
     if (!userId) return;
     try {
       setDataLoading(true);
       if (editingRecebimento) {
-        await dbService.updateRecebimento(editingRecebimento.id, payload);
+        const singlePayload = Array.isArray(payloads) ? payloads[0] : payloads;
+        await dbService.updateRecebimento(editingRecebimento.id, singlePayload);
       } else {
-        await dbService.addRecebimento(userId, payload);
+        if (Array.isArray(payloads)) {
+          for (const p of payloads) {
+            await dbService.addRecebimento(userId, p);
+          }
+        } else {
+          await dbService.addRecebimento(userId, payloads);
+        }
       }
       await loadAllUserData(userId);
     } catch (err) {

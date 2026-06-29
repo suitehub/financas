@@ -200,7 +200,14 @@ export default function CalendarioFinanceiro({ recebimentos }: CalendarioFinance
                 selectedDayReceipts.map(r => (
                   <div key={r.id} className="p-3 bg-gray-50/50 dark:bg-zinc-800/40 rounded-xl border border-gray-100/40 dark:border-zinc-800/80 flex items-center justify-between text-xs">
                     <div className="min-w-0">
-                      <span className="font-bold text-gray-950 dark:text-zinc-100 block truncate">{r.clienteNome}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-gray-950 dark:text-zinc-100 truncate">{r.clienteNome}</span>
+                        {r.parcelado && (
+                          <span className="text-[9px] bg-sky-50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400 px-1 py-0.5 rounded font-black">
+                            {r.parcelaAtual}/{r.totalParcelas}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-gray-400 block mt-0.5">{r.projetoNome}</span>
                     </div>
                     <div className="text-right">
@@ -242,7 +249,7 @@ export default function CalendarioFinanceiro({ recebimentos }: CalendarioFinance
                             {r.clienteNome}
                           </span>
                           <span className="text-[9px] text-gray-400 dark:text-zinc-500 block truncate">
-                            {r.categoria}
+                            {r.categoria} {r.parcelado && `• Parcela ${r.parcelaAtual}/${r.totalParcelas}`}
                           </span>
                         </div>
                       </div>

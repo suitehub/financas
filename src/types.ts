@@ -38,6 +38,10 @@ export interface Recebimento {
   nfNumero?: string;
   nfDataEmissao?: string;
   observacoes?: string;
+  parcelado?: boolean;
+  parcelaAtual?: number;
+  totalParcelas?: number;
+  grupoParcelasId?: string;
   createdAt: string;
 }
 

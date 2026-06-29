@@ -345,6 +345,11 @@ export default function RecebimentosList({
                     <span className="text-[10px] bg-slate-50 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 px-2 py-0.5 rounded-md">
                       {r.formaPagamento}
                     </span>
+                    {r.parcelado && (
+                      <span className="text-[10px] bg-sky-50 dark:bg-sky-950/25 text-sky-600 dark:text-sky-400 border border-sky-100/60 dark:border-sky-900/30 px-2 py-0.5 rounded-md font-black">
+                        Parcela {r.parcelaAtual}/{r.totalParcelas}
+                      </span>
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-zinc-400 font-medium">

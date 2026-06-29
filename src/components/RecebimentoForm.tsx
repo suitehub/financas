@@ -5,7 +5,7 @@ import { Cliente, Projeto, Recebimento, CategoriaType, OrigemType, FormaPagament
 interface RecebimentoFormProps {
   clientes: Cliente[];
   projetos: Projeto[];
-  onSave: (recebimento: Omit<Recebimento, 'id' | 'userId' | 'createdAt'>) => Promise<void>;
+  onSave: (recebimento: Omit<Recebimento, 'id' | 'userId' | 'createdAt'> | Omit<Recebimento, 'id' | 'userId' | 'createdAt'>[]) => Promise<void>;
   onAddCliente: (nome: string) => Promise<Cliente>;
   onAddProjeto: (nome: string, clienteId: string, clienteNome: string, categoria: string, valor: number) => Promise<Projeto>;
   onClose: () => void;
@@ -42,6 +42,23 @@ const PAYMENTS: FormaPagamentoType[] = [
   'Outro'
 ];
 
+const calculateNextDate = (baseDateStr: string, index: number, frequency: 'Mensal' | 'Quinzenal' | 'Semanal') => {
+  const parts = baseDateStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  
+  const date = new Date(year, month, day, 12, 0, 0); // use midday to prevent timezone shifting
+  if (frequency === 'Semanal') {
+    date.setDate(date.getDate() + (7 * index));
+  } else if (frequency === 'Quinzenal') {
+    date.setDate(date.getDate() + (15 * index));
+  } else { // Mensal
+    date.setMonth(date.getMonth() + index);
+  }
+  return date.toISOString().split('T')[0];
+};
+
 export default function RecebimentoForm({
   clientes,
   projetos,
@@ -65,6 +82,12 @@ export default function RecebimentoForm({
   const [nfNumero, setNfNumero] = useState('');
   const [nfDataEmissao, setNfDataEmissao] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  
+  // Installment states
+  const [parcelado, setParcelado] = useState(false);
+  const [numParcelas, setNumParcelas] = useState(3);
+  const [intervaloParcelas, setIntervaloParcelas] = useState<'Mensal' | 'Quinzenal' | 'Semanal'>('Mensal');
+  const [tipoDivisao, setTipoDivisao] = useState<'dividir' | 'repetir'>('dividir');
 
   // Inline Quick Add state
   const [isAddingCliente, setIsAddingCliente] = useState(false);
@@ -92,6 +115,10 @@ export default function RecebimentoForm({
       setNfNumero(initialRecebimento.nfNumero || '');
       setNfDataEmissao(initialRecebimento.nfDataEmissao || '');
       setObservacoes(initialRecebimento.observacoes || '');
+      setParcelado(initialRecebimento.parcelado || false);
+      if (initialRecebimento.totalParcelas) {
+        setNumParcelas(initialRecebimento.totalParcelas);
+      }
     }
   }, [initialRecebimento]);
 
@@ -184,25 +211,83 @@ export default function RecebimentoForm({
         throw new Error('Cliente ou Projeto selecionado inválido.');
       }
 
-      const recebimentoPayload: Omit<Recebimento, 'id' | 'userId' | 'createdAt'> = {
-        clienteId,
-        clienteNome: selCliente.nome,
-        projetoId,
-        projetoNome: selProjeto.nome,
-        categoria,
-        origem,
-        valor: parseFloat(valor),
-        dataPrevista,
-        dataRecebimento: status === 'Recebido' ? (dataRecebimento || new Date().toISOString().split('T')[0]) : undefined,
-        formaPagamento,
-        status,
-        notaFiscal,
-        nfNumero: notaFiscal === 'Emitida' ? nfNumero : undefined,
-        nfDataEmissao: notaFiscal === 'Emitida' ? nfDataEmissao : undefined,
-        observacoes: observacoes.trim() || undefined
-      };
+      let payloads: Omit<Recebimento, 'id' | 'userId' | 'createdAt'> | Omit<Recebimento, 'id' | 'userId' | 'createdAt'>[];
 
-      await onSave(recebimentoPayload);
+      if (parcelado && !initialRecebimento) {
+        const total = parseInt(numParcelas.toString()) || 2;
+        const baseVal = parseFloat(valor);
+        const grupoId = Math.random().toString(36).substring(2, 15);
+        const generatedPayloads: Omit<Recebimento, 'id' | 'userId' | 'createdAt'>[] = [];
+
+        for (let i = 0; i < total; i++) {
+          let installmentVal = baseVal;
+          if (tipoDivisao === 'dividir') {
+            const tempVal = parseFloat((baseVal / total).toFixed(2));
+            if (i === 0) {
+              const diff = baseVal - (tempVal * total);
+              installmentVal = parseFloat((tempVal + diff).toFixed(2));
+            } else {
+              installmentVal = tempVal;
+            }
+          }
+
+          const scheduledDate = calculateNextDate(dataPrevista, i, intervaloParcelas);
+          const currentStatus = i === 0 ? status : 'A Receber';
+          const paidDate = currentStatus === 'Recebido' ? (dataRecebimento || new Date().toISOString().split('T')[0]) : undefined;
+
+          const partInfo = `[Parcela ${i + 1} de ${total}]`;
+          const installObs = observacoes.trim()
+            ? `${partInfo} - ${observacoes.trim()}`
+            : `${partInfo} de ${selProjeto.nome}`;
+
+          generatedPayloads.push({
+            clienteId,
+            clienteNome: selCliente.nome,
+            projetoId,
+            projetoNome: selProjeto.nome,
+            categoria,
+            origem,
+            valor: installmentVal,
+            dataPrevista: scheduledDate,
+            dataRecebimento: paidDate,
+            formaPagamento,
+            status: currentStatus,
+            notaFiscal,
+            nfNumero: (notaFiscal === 'Emitida' && i === 0) ? nfNumero : undefined,
+            nfDataEmissao: (notaFiscal === 'Emitida' && i === 0) ? nfDataEmissao : undefined,
+            observacoes: installObs,
+            parcelado: true,
+            parcelaAtual: i + 1,
+            totalParcelas: total,
+            grupoParcelasId: grupoId
+          });
+        }
+        payloads = generatedPayloads;
+      } else {
+        payloads = {
+          clienteId,
+          clienteNome: selCliente.nome,
+          projetoId,
+          projetoNome: selProjeto.nome,
+          categoria,
+          origem,
+          valor: parseFloat(valor),
+          dataPrevista,
+          dataRecebimento: status === 'Recebido' ? (dataRecebimento || new Date().toISOString().split('T')[0]) : undefined,
+          formaPagamento,
+          status,
+          notaFiscal,
+          nfNumero: notaFiscal === 'Emitida' ? nfNumero : undefined,
+          nfDataEmissao: notaFiscal === 'Emitida' ? nfDataEmissao : undefined,
+          observacoes: observacoes.trim() || undefined,
+          parcelado: initialRecebimento?.parcelado || false,
+          parcelaAtual: initialRecebimento?.parcelaAtual,
+          totalParcelas: initialRecebimento?.totalParcelas,
+          grupoParcelasId: initialRecebimento?.grupoParcelasId
+        };
+      }
+
+      await onSave(payloads);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Erro ao salvar o recebimento.');
@@ -452,6 +537,134 @@ export default function RecebimentoForm({
                 </div>
               </div>
             </div>
+
+            {/* Installment Toggle Section */}
+            {!initialRecebimento ? (
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/30 border border-zinc-150 dark:border-zinc-800 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <label className="text-xs font-bold text-gray-800 dark:text-zinc-200">
+                      Faturamento Parcelado?
+                    </label>
+                    <span className="text-[10px] text-gray-400 dark:text-zinc-500">
+                      Gere múltiplas parcelas automaticamente a partir deste lançamento.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setParcelado(!parcelado)}
+                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      parcelado ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`w-4 h-4 rounded-full bg-white absolute top-1 left-1 transition-transform ${
+                        parcelado ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {parcelado && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-zinc-250 dark:border-zinc-800/60 animate-fade-in">
+                    {/* Quantidade */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">
+                        Nº de Parcelas
+                      </label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="72"
+                        required={parcelado}
+                        value={numParcelas}
+                        onChange={(e) => setNumParcelas(Math.max(2, parseInt(e.target.value) || 2))}
+                        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Frequência */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">
+                        Periodicidade
+                      </label>
+                      <select
+                        value={intervaloParcelas}
+                        onChange={(e) => setIntervaloParcelas(e.target.value as 'Mensal' | 'Quinzenal' | 'Semanal')}
+                        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="Mensal">Mensal</option>
+                        <option value="Quinzenal">Quinzenal</option>
+                        <option value="Semanal">Semanal</option>
+                      </select>
+                    </div>
+
+                    {/* Tipo Divisão */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">
+                        Como dividir o valor?
+                      </label>
+                      <select
+                        value={tipoDivisao}
+                        onChange={(e) => setTipoDivisao(e.target.value as 'dividir' | 'repetir')}
+                        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="dividir">Dividir igualmente</option>
+                        <option value="repetir">Repetir valor cheio</option>
+                      </select>
+                    </div>
+
+                    {/* Helper preview info */}
+                    <div className="col-span-1 sm:col-span-3 text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/10 p-2.5 rounded-xl mt-1">
+                      {tipoDivisao === 'dividir' ? (
+                        <span>
+                          Serão criadas <strong>{numParcelas} parcelas</strong>. A 1ª parcela será de{' '}
+                          <strong>
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                              parseFloat((parseFloat(valor || '0') / numParcelas).toFixed(2)) +
+                                parseFloat(
+                                  (
+                                    parseFloat(valor || '0') -
+                                    parseFloat((parseFloat(valor || '0') / numParcelas).toFixed(2)) * numParcelas
+                                  ).toFixed(2)
+                                )
+                            )}
+                          </strong>{' '}
+                          e as demais de{' '}
+                          <strong>
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                              parseFloat((parseFloat(valor || '0') / numParcelas).toFixed(2))
+                            )}
+                          </strong>.
+                        </span>
+                      ) : (
+                        <span>
+                          Serão criadas <strong>{numParcelas} parcelas</strong> de{' '}
+                          <strong>
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                              parseFloat(valor || '0')
+                            )}
+                          </strong>{' '}
+                          cada. Valor total do plano:{' '}
+                          <strong>
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                              parseFloat(valor || '0') * numParcelas
+                            )}
+                          </strong>.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : initialRecebimento?.parcelado ? (
+              <div className="p-3.5 bg-sky-50 dark:bg-sky-950/15 border border-sky-100 dark:border-sky-900/30 text-sky-700 dark:text-sky-400 text-xs rounded-2xl flex items-center justify-between">
+                <span className="font-semibold">Este faturamento faz parte de um parcelamento</span>
+                <span className="bg-sky-500/10 text-sky-600 dark:text-sky-300 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                  Parcela {initialRecebimento.parcelaAtual} de {initialRecebimento.totalParcelas}
+                </span>
+              </div>
+            ) : null}
 
             {/* Datas & Forma Pagamento */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
