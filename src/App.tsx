@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from './firebase';
 import { dbService } from './services/dbService';
 import { Cliente, Projeto, Recebimento, StatusProjetoType } from './types';
 
@@ -12,7 +10,7 @@ import {
   Users,
   BarChart2,
   Calendar,
-  LogOut,
+  RotateCcw,
   Plus,
   Moon,
   Sun,
@@ -21,7 +19,6 @@ import {
 } from 'lucide-react';
 
 // Components
-import AuthScreen from './components/AuthScreen';
 import ThemeToggle from './components/ThemeToggle';
 import SearchGlobal from './components/SearchGlobal';
 import Dashboard from './components/Dashboard';
@@ -69,23 +66,28 @@ export default function App() {
     localStorage.setItem('suitehub-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // Auth State Listener
+  // Local Data Initialization
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const initLocalData = async () => {
       setAuthLoading(true);
-      if (user) {
-        setUserId(user.uid);
-        await loadAllUserData(user.uid);
+      const uid = 'local-user';
+      setUserId(uid);
+
+      // Check if there is already data in localStorage
+      const savedClientes = localStorage.getItem('suitehub_clientes');
+      if (!savedClientes) {
+        // Automatically seed with demo data on first visit
+        const seeded = await dbService.seedDemoData(uid);
+        setClientes(seeded.clientes);
+        setProjetos(seeded.projetos);
+        setRecebimentos(seeded.recebimentos);
       } else {
-        setUserId(null);
-        setClientes([]);
-        setProjetos([]);
-        setRecebimentos([]);
+        await loadAllUserData(uid);
       }
       setAuthLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    initLocalData();
   }, []);
 
   // Sync user data
@@ -128,9 +130,19 @@ export default function App() {
     }
   };
 
-  const handleSignOut = async () => {
-    if (confirm('Deseja realmente sair da sua conta?')) {
-      await signOut(auth);
+  const handleResetData = async () => {
+    if (confirm('Deseja realmente redefinir o aplicativo? Isso apagará todas as suas alterações locais e recarregará os dados de demonstração.')) {
+      setAuthLoading(true);
+      localStorage.removeItem('suitehub_clientes');
+      localStorage.removeItem('suitehub_projetos');
+      localStorage.removeItem('suitehub_recebimentos');
+      
+      const uid = 'local-user';
+      const seeded = await dbService.seedDemoData(uid);
+      setClientes(seeded.clientes);
+      setProjetos(seeded.projetos);
+      setRecebimentos(seeded.recebimentos);
+      setAuthLoading(false);
     }
   };
 
@@ -336,10 +348,7 @@ export default function App() {
     );
   }
 
-  // Auth Screen if not signed in
-  if (!userId) {
-    return <AuthScreen onSuccess={handleAuthSuccess} />;
-  }
+
 
   // Sum current month receipts to calculate progress for "Próxima Meta" widget
   const currentYearStr = '2026';
@@ -436,11 +445,11 @@ export default function App() {
           <div className="flex items-center justify-between gap-2 px-1">
             <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
             <button
-              onClick={handleSignOut}
+              onClick={handleResetData}
               className="p-2.5 rounded-xl border border-gray-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-gray-400 hover:text-rose-500 transition-all shadow-sm cursor-pointer"
-              title="Sair"
+              title="Redefinir Dados de Demo"
             >
-              <LogOut size={16} />
+              <RotateCcw size={16} />
             </button>
           </div>
         </div>
@@ -460,11 +469,11 @@ export default function App() {
         <div className="flex items-center gap-2.5">
           <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
           <button
-            onClick={handleSignOut}
+            onClick={handleResetData}
             className="p-2 bg-zinc-50 dark:bg-zinc-800 text-gray-400 hover:text-rose-500 rounded-xl cursor-pointer"
-            title="Sair"
+            title="Redefinir Dados"
           >
-            <LogOut size={16} />
+            <RotateCcw size={16} />
           </button>
         </div>
       </header>

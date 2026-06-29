@@ -4,6 +4,94 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Suite Hub Finanças</title>
+    <script>
+      // Global error tracker to prevent completely blank screens and show elegant debug info if a crash occurs
+      window.addEventListener('error', function(event) {
+        showErrorOverlay(event.error || new Error(event.message || 'Unknown Error'), 'Runtime Error');
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        showErrorOverlay(event.reason || new Error('Unhandled Promise Rejection'), 'Promise Rejection');
+      });
+
+      function showErrorOverlay(err, type) {
+        // Prevent multiple overlays
+        if (document.getElementById('error-overlay-sh')) return;
+        
+        var overlay = document.createElement('div');
+        overlay.id = 'error-overlay-sh';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.backgroundColor = '#09090b';
+        overlay.style.color = '#fafafa';
+        overlay.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+        overlay.style.padding = '2rem';
+        overlay.style.boxSizing = 'border-box';
+        overlay.style.zIndex = '999999';
+        overlay.style.overflowY = 'auto';
+
+        var content = document.createElement('div');
+        content.style.maxWidth = '640px';
+        content.style.margin = '4rem auto';
+        content.style.backgroundColor = '#18181b';
+        content.style.border = '1px solid #27272a';
+        content.style.borderRadius = '1rem';
+        content.style.padding = '2rem';
+        content.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5)';
+
+        var title = document.createElement('h2');
+        title.innerText = '⚠️ Erro ao Carregar Aplicativo';
+        title.style.margin = '0 0 1rem 0';
+        title.style.color = '#ef4444';
+        title.style.fontSize = '1.5rem';
+        title.style.fontWeight = 'bold';
+
+        var subtitle = document.createElement('p');
+        subtitle.innerText = 'Detectamos um problema ao inicializar o Suite Hub Finanças. Veja os detalhes abaixo para obter suporte ou ajustar as configurações do seu repositório:';
+        subtitle.style.fontSize = '0.875rem';
+        subtitle.style.color = '#a1a1aa';
+        subtitle.style.lineHeight = '1.5';
+        subtitle.style.marginBottom = '1.5rem';
+
+        var errorBox = document.createElement('pre');
+        errorBox.style.backgroundColor = '#09090b';
+        errorBox.style.border = '1px solid #27272a';
+        errorBox.style.padding = '1rem';
+        errorBox.style.borderRadius = '0.5rem';
+        errorBox.style.color = '#f43f5e';
+        errorBox.style.fontSize = '0.75rem';
+        errorBox.style.lineHeight = '1.6';
+        errorBox.style.overflowX = 'auto';
+        errorBox.innerText = '[' + type + '] ' + (err.stack || err.message || err);
+
+        var actions = document.createElement('div');
+        actions.style.marginTop = '2rem';
+        actions.style.display = 'flex';
+        actions.style.gap = '1rem';
+
+        var reloadBtn = document.createElement('button');
+        reloadBtn.innerText = 'Recarregar Página';
+        reloadBtn.style.backgroundColor = '#10b981';
+        reloadBtn.style.color = '#ffffff';
+        reloadBtn.style.border = 'none';
+        reloadBtn.style.padding = '0.5rem 1rem';
+        reloadBtn.style.borderRadius = '0.5rem';
+        reloadBtn.style.fontSize = '0.875rem';
+        reloadBtn.style.fontWeight = '600';
+        reloadBtn.style.cursor = 'pointer';
+        reloadBtn.onclick = function() { window.location.reload(); };
+
+        content.appendChild(title);
+        content.appendChild(subtitle);
+        content.appendChild(errorBox);
+        actions.appendChild(reloadBtn);
+        content.appendChild(actions);
+        overlay.appendChild(content);
+        document.body.appendChild(overlay);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

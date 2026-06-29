@@ -1,41 +1,30 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  setDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  writeBatch
-} from 'firebase/firestore';
-import { db } from '../firebase';
 import { Cliente, Projeto, Recebimento } from '../types';
 
 // Helper to generate IDs
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
-// Collection References
-const clientesCol = collection(db, 'clientes');
-const projetosCol = collection(db, 'projetos');
-const recebimentosCol = collection(db, 'recebimentos');
+// Helper keys
+const CLIENTES_KEY = 'suitehub_clientes';
+const PROJETOS_KEY = 'suitehub_projetos';
+const RECEBIMENTOS_KEY = 'suitehub_recebimentos';
+
+// Helper storage load/save
+const getLocalData = <T>(key: string): T[] => {
+  const data = localStorage.getItem(key);
+  return data ? JSON.parse(data) : [];
+};
+
+const saveLocalData = <T>(key: string, data: T[]): void => {
+  localStorage.setItem(key, JSON.stringify(data));
+};
 
 export const dbService = {
   // --- CLIENTES ---
   async getClientes(userId: string): Promise<Cliente[]> {
-    try {
-      const q = query(clientesCol, where('userId', '==', userId));
-      const querySnapshot = await getDocs(q);
-      const list: Cliente[] = [];
-      querySnapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as Cliente);
-      });
-      return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    } catch (error) {
-      console.error("Error fetching Clientes:", error);
-      throw error;
-    }
+    const list = getLocalData<Cliente>(CLIENTES_KEY);
+    return list
+      .filter((c) => c.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 
   async addCliente(userId: string, nome: string, email = '', telefone = ''): Promise<Cliente> {
@@ -48,33 +37,33 @@ export const dbService = {
       telefone,
       createdAt: new Date().toISOString()
     };
-    await setDoc(doc(db, 'clientes', id), cliente);
+    const list = getLocalData<Cliente>(CLIENTES_KEY);
+    list.push(cliente);
+    saveLocalData(CLIENTES_KEY, list);
     return cliente;
   },
 
   async updateCliente(id: string, updates: Partial<Omit<Cliente, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const docRef = doc(db, 'clientes', id);
-    await updateDoc(docRef, updates);
+    const list = getLocalData<Cliente>(CLIENTES_KEY);
+    const index = list.findIndex((item) => item.id === id);
+    if (index !== -1) {
+      list[index] = { ...list[index], ...updates };
+      saveLocalData(CLIENTES_KEY, list);
+    }
   },
 
   async deleteCliente(id: string): Promise<void> {
-    await deleteDoc(doc(db, 'clientes', id));
+    const list = getLocalData<Cliente>(CLIENTES_KEY);
+    const filtered = list.filter((item) => item.id !== id);
+    saveLocalData(CLIENTES_KEY, filtered);
   },
 
   // --- PROJETOS ---
   async getProjetos(userId: string): Promise<Projeto[]> {
-    try {
-      const q = query(projetosCol, where('userId', '==', userId));
-      const querySnapshot = await getDocs(q);
-      const list: Projeto[] = [];
-      querySnapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as Projeto);
-      });
-      return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    } catch (error) {
-      console.error("Error fetching Projetos:", error);
-      throw error;
-    }
+    const list = getLocalData<Projeto>(PROJETOS_KEY);
+    return list
+      .filter((p) => p.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 
   async addProjeto(userId: string, projeto: Omit<Projeto, 'id' | 'userId' | 'createdAt'>): Promise<Projeto> {
@@ -85,33 +74,33 @@ export const dbService = {
       userId,
       createdAt: new Date().toISOString()
     };
-    await setDoc(doc(db, 'projetos', id), novoProjeto);
+    const list = getLocalData<Projeto>(PROJETOS_KEY);
+    list.push(novoProjeto);
+    saveLocalData(PROJETOS_KEY, list);
     return novoProjeto;
   },
 
   async updateProjeto(id: string, updates: Partial<Omit<Projeto, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const docRef = doc(db, 'projetos', id);
-    await updateDoc(docRef, updates);
+    const list = getLocalData<Projeto>(PROJETOS_KEY);
+    const index = list.findIndex((item) => item.id === id);
+    if (index !== -1) {
+      list[index] = { ...list[index], ...updates };
+      saveLocalData(PROJETOS_KEY, list);
+    }
   },
 
   async deleteProjeto(id: string): Promise<void> {
-    await deleteDoc(doc(db, 'projetos', id));
+    const list = getLocalData<Projeto>(PROJETOS_KEY);
+    const filtered = list.filter((item) => item.id !== id);
+    saveLocalData(PROJETOS_KEY, filtered);
   },
 
   // --- RECEBIMENTOS ---
   async getRecebimentos(userId: string): Promise<Recebimento[]> {
-    try {
-      const q = query(recebimentosCol, where('userId', '==', userId));
-      const querySnapshot = await getDocs(q);
-      const list: Recebimento[] = [];
-      querySnapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as Recebimento);
-      });
-      return list.sort((a, b) => b.dataPrevista.localeCompare(a.dataPrevista));
-    } catch (error) {
-      console.error("Error fetching Recebimentos:", error);
-      throw error;
-    }
+    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
+    return list
+      .filter((r) => r.userId === userId)
+      .sort((a, b) => b.dataPrevista.localeCompare(a.dataPrevista));
   },
 
   async addRecebimento(userId: string, recebimento: Omit<Recebimento, 'id' | 'userId' | 'createdAt'>): Promise<Recebimento> {
@@ -122,23 +111,29 @@ export const dbService = {
       userId,
       createdAt: new Date().toISOString()
     };
-    await setDoc(doc(db, 'recebimentos', id), novoRecebimento);
+    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
+    list.push(novoRecebimento);
+    saveLocalData(RECEBIMENTOS_KEY, list);
     return novoRecebimento;
   },
 
   async updateRecebimento(id: string, updates: Partial<Omit<Recebimento, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const docRef = doc(db, 'recebimentos', id);
-    await updateDoc(docRef, updates);
+    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
+    const index = list.findIndex((item) => item.id === id);
+    if (index !== -1) {
+      list[index] = { ...list[index], ...updates };
+      saveLocalData(RECEBIMENTOS_KEY, list);
+    }
   },
 
   async deleteRecebimento(id: string): Promise<void> {
-    await deleteDoc(doc(db, 'recebimentos', id));
+    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
+    const filtered = list.filter((item) => item.id !== id);
+    saveLocalData(RECEBIMENTOS_KEY, filtered);
   },
 
   // --- AUTO SEEDING FOR EMPTY DEMO ACCOUNT ---
   async seedDemoData(userId: string): Promise<{ clientes: Cliente[], projetos: Projeto[], recebimentos: Recebimento[] }> {
-    const batch = writeBatch(db);
-
     const dateOffset = (days: number) => {
       const d = new Date();
       d.setDate(d.getDate() + days);
@@ -156,10 +151,7 @@ export const dbService = {
     const client3: Cliente = { id: c3Id, userId, nome: 'Padaria Bella Massa', email: 'financeiro@bellamassa.com', telefone: '(31) 96666-5555', createdAt: dateOffset(-20) };
     const client4: Cliente = { id: c4Id, userId, nome: 'Alura Corp Inc', email: 'parcerias@aluracorp.com', telefone: '(11) 95555-4444', createdAt: dateOffset(-10) };
 
-    batch.set(doc(db, 'clientes', c1Id), client1);
-    batch.set(doc(db, 'clientes', c2Id), client2);
-    batch.set(doc(db, 'clientes', c3Id), client3);
-    batch.set(doc(db, 'clientes', c4Id), client4);
+    const clientes = [client1, client2, client3, client4];
 
     // 2. Seed Projetos
     const p1Id = 'demo-p1';
@@ -219,10 +211,7 @@ export const dbService = {
       createdAt: dateOffset(-8)
     };
 
-    batch.set(doc(db, 'projetos', p1Id), proj1);
-    batch.set(doc(db, 'projetos', p2Id), proj2);
-    batch.set(doc(db, 'projetos', p3Id), proj3);
-    batch.set(doc(db, 'projetos', p4Id), proj4);
+    const projetos = [proj1, proj2, proj3, proj4];
 
     // 3. Seed Recebimentos
     const r1Id = 'demo-r1';
@@ -369,20 +358,13 @@ export const dbService = {
       createdAt: dateOffset(-1)
     };
 
-    batch.set(doc(db, 'recebimentos', r1Id), rec1);
-    batch.set(doc(db, 'recebimentos', r2Id), rec2);
-    batch.set(doc(db, 'recebimentos', r3Id), rec3);
-    batch.set(doc(db, 'recebimentos', r4Id), rec4);
-    batch.set(doc(db, 'recebimentos', r5Id), rec5);
-    batch.set(doc(db, 'recebimentos', r6Id), rec6);
-    batch.set(doc(db, 'recebimentos', r7Id), rec7);
+    const recebimentos = [rec1, rec2, rec3, rec4, rec5, rec6, rec7];
 
-    await batch.commit();
+    // Overwrite with initial seeded data
+    saveLocalData(CLIENTES_KEY, clientes);
+    saveLocalData(PROJETOS_KEY, projetos);
+    saveLocalData(RECEBIMENTOS_KEY, recebimentos);
 
-    return {
-      clientes: [client1, client2, client3, client4],
-      projetos: [proj1, proj2, proj3, proj4],
-      recebimentos: [rec1, rec2, rec3, rec4, rec5, rec6, rec7]
-    };
+    return { clientes, projetos, recebimentos };
   }
 };
