@@ -1,0 +1,6 @@
+{
+  "name": "Suite Hub – Finanças",
+  "description": "Aplicativo para profissionais autônomos, freelancers e desenvolvedores registrarem e acompanharem seus faturamentos, valores a receber e dados financeiros de clientes e projetos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
