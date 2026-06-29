@@ -73,17 +73,16 @@ export default function App() {
       const uid = 'local-user';
       setUserId(uid);
 
-      // Check if there is already data in localStorage
-      const savedClientes = localStorage.getItem('suitehub_clientes');
-      if (!savedClientes) {
-        // Automatically seed with demo data on first visit
-        const seeded = await dbService.seedDemoData(uid);
-        setClientes(seeded.clientes);
-        setProjetos(seeded.projetos);
-        setRecebimentos(seeded.recebimentos);
-      } else {
-        await loadAllUserData(uid);
+      // One-time automatic reset to start with a clean slate (zero records)
+      const alreadyReset = localStorage.getItem('suitehub_zero_reset_done');
+      if (!alreadyReset) {
+        localStorage.removeItem('suitehub_clientes');
+        localStorage.removeItem('suitehub_projetos');
+        localStorage.removeItem('suitehub_recebimentos');
+        localStorage.setItem('suitehub_zero_reset_done', 'true');
       }
+
+      await loadAllUserData(uid);
       setAuthLoading(false);
     };
 
@@ -108,40 +107,15 @@ export default function App() {
     }
   };
 
-  // Auth Success Handlers (Seeds if new or demo)
-  const handleAuthSuccess = async (uid: string, isNew: boolean) => {
-    setUserId(uid);
-    if (isNew) {
-      try {
-        setDataLoading(true);
-        // Automatically seed with beautiful demo data for guests/new sign-ups
-        const seeded = await dbService.seedDemoData(uid);
-        setClientes(seeded.clientes);
-        setProjetos(seeded.projetos);
-        setRecebimentos(seeded.recebimentos);
-      } catch (err) {
-        console.error("Error seeding initial data:", err);
-        await loadAllUserData(uid);
-      } finally {
-        setDataLoading(false);
-      }
-    } else {
-      await loadAllUserData(uid);
-    }
-  };
-
   const handleResetData = async () => {
-    if (confirm('Deseja realmente redefinir o aplicativo? Isso apagará todas as suas alterações locais e recarregará os dados de demonstração.')) {
+    if (confirm('Deseja realmente redefinir o aplicativo? Isso apagará todas as suas informações locais permanentemente, deixando o sistema totalmente limpo.')) {
       setAuthLoading(true);
       localStorage.removeItem('suitehub_clientes');
       localStorage.removeItem('suitehub_projetos');
       localStorage.removeItem('suitehub_recebimentos');
-      
-      const uid = 'local-user';
-      const seeded = await dbService.seedDemoData(uid);
-      setClientes(seeded.clientes);
-      setProjetos(seeded.projetos);
-      setRecebimentos(seeded.recebimentos);
+      setClientes([]);
+      setProjetos([]);
+      setRecebimentos([]);
       setAuthLoading(false);
     }
   };
@@ -442,15 +416,8 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center justify-center px-1">
             <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
-            <button
-              onClick={handleResetData}
-              className="p-2.5 rounded-xl border border-gray-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-gray-400 hover:text-rose-500 transition-all shadow-sm cursor-pointer"
-              title="Redefinir Dados de Demo"
-            >
-              <RotateCcw size={16} />
-            </button>
           </div>
         </div>
       </aside>
@@ -468,13 +435,6 @@ export default function App() {
 
         <div className="flex items-center gap-2.5">
           <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
-          <button
-            onClick={handleResetData}
-            className="p-2 bg-zinc-50 dark:bg-zinc-800 text-gray-400 hover:text-rose-500 rounded-xl cursor-pointer"
-            title="Redefinir Dados"
-          >
-            <RotateCcw size={16} />
-          </button>
         </div>
       </header>
 
