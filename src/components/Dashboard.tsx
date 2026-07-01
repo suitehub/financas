@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   TrendingUp,
   DollarSign,
@@ -33,13 +33,34 @@ export default function Dashboard({
   onNavigateTo
 }: DashboardProps) {
 
+  // Periods lists for filtering
+  const monthsList = [
+    { value: '01', label: 'Janeiro' },
+    { value: '02', label: 'Fevereiro' },
+    { value: '03', label: 'Março' },
+    { value: '04', label: 'Abril' },
+    { value: '05', label: 'Maio' },
+    { value: '06', label: 'Junho' },
+    { value: '07', label: 'Julho' },
+    { value: '08', label: 'Agosto' },
+    { value: '09', label: 'Setembro' },
+    { value: '10', label: 'Outubro' },
+    { value: '11', label: 'Novembro' },
+    { value: '12', label: 'Dezembro' }
+  ];
+  const yearsList = ['2024', '2025', '2026', '2027'];
+
   // Current Date context
-  const currentYearStr = '2026';
-  const currentMonthStr = '06'; // June
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState<string>(now.getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(now.getMonth() + 1).padStart(2, '0'));
+
+  const currentYearStr = selectedYear;
+  const currentMonthStr = selectedMonth;
 
   // --- STATS CALCULATIONS ---
 
-  // Faturamento do Mês (Received in current month: 2026-06)
+  // Faturamento do Mês (Received in current month)
   const faturamentoMes = recebimentos
     .filter(r => r.status === 'Recebido' && r.dataRecebimento && r.dataRecebimento.startsWith(`${currentYearStr}-${currentMonthStr}`))
     .reduce((sum, r) => sum + r.valor, 0);
@@ -48,7 +69,7 @@ export default function Dashboard({
     .filter(r => r.status === 'A Receber' && r.dataPrevista.startsWith(`${currentYearStr}-${currentMonthStr}`))
     .reduce((sum, r) => sum + r.valor, 0);
 
-  // Faturamento do Ano (Received in current year: 2026)
+  // Faturamento do Ano (Received in current year)
   const faturamentoAno = recebimentos
     .filter(r => r.status === 'Recebido' && r.dataRecebimento && r.dataRecebimento.startsWith(currentYearStr))
     .reduce((sum, r) => sum + r.valor, 0);
@@ -71,14 +92,14 @@ export default function Dashboard({
 
   // --- CHART EVOLUTION (Last 6 Months) ---
   const getEvolucaoData = () => {
-    // Generate last 6 months key strings
-    // E.g., for June 2026: Jan, Feb, Mar, Apr, May, Jun
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const data: { name: string; Faturado: number; Pendente: number }[] = [];
 
-    const baseDate = new Date(2026, 5, 29); // June 2026
+    const selYearNum = parseInt(currentYearStr, 10);
+    const selMonthNum = parseInt(currentMonthStr, 10) - 1; // 0-indexed
+
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(2026, 5 - i, 1);
+      const d = new Date(selYearNum, selMonthNum - i, 1);
       const year = d.getFullYear();
       const monthNum = d.getMonth() + 1;
       const monthStr = monthNum < 10 ? `0${monthNum}` : `${monthNum}`;
@@ -93,7 +114,7 @@ export default function Dashboard({
         .reduce((sum, r) => sum + r.valor, 0);
 
       data.push({
-        name: monthNames[d.getMonth()],
+        name: `${monthNames[d.getMonth()]}/${String(year).slice(2)}`,
         Faturado: faturadoNoMes,
         Pendente: pendenteNoMes
       });
@@ -138,6 +159,37 @@ export default function Dashboard({
         </button>
       </div>
 
+      {/* Competência / Filtro de Período do Painel */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-zinc-900 px-6 py-4 rounded-3xl border border-slate-100 dark:border-zinc-800/80 shadow-xs">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100">Competência de Análise</h3>
+          <p className="text-[10px] text-gray-400 dark:text-zinc-500">Selecione o mês e ano para analisar as métricas de faturamento.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Mês Selector */}
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-750 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+          >
+            {monthsList.map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+
+          {/* Ano Selector */}
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-750 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+          >
+            {yearsList.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         
@@ -160,7 +212,7 @@ export default function Dashboard({
                 + {formatCurrency(aReceberMes)}
               </span>
               <span className="text-gray-400 dark:text-zinc-500">
-                previstos para Junho
+                previstos para {monthsList.find(m => m.value === currentMonthStr)?.label || 'este mês'}
               </span>
             </div>
           </div>
@@ -170,7 +222,7 @@ export default function Dashboard({
         <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-slate-100 dark:border-zinc-800/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">
-              Faturamento do Ano (2026)
+              Faturamento do Ano ({currentYearStr})
             </span>
             <div className="p-2 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
               <DollarSign size={18} />

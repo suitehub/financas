@@ -73,15 +73,6 @@ export default function App() {
       const uid = 'local-user';
       setUserId(uid);
 
-      // One-time automatic reset to start with a clean slate (zero records)
-      const alreadyReset = localStorage.getItem('suitehub_zero_reset_done');
-      if (!alreadyReset) {
-        localStorage.removeItem('suitehub_clientes');
-        localStorage.removeItem('suitehub_projetos');
-        localStorage.removeItem('suitehub_recebimentos');
-        localStorage.setItem('suitehub_zero_reset_done', 'true');
-      }
-
       await loadAllUserData(uid);
       setAuthLoading(false);
     };
@@ -93,9 +84,17 @@ export default function App() {
   const loadAllUserData = async (uid: string) => {
     try {
       setDataLoading(true);
-      const userClientes = await dbService.getClientes(uid);
-      const userProjetos = await dbService.getProjetos(uid);
-      const userRecebimentos = await dbService.getRecebimentos(uid);
+      let userClientes = await dbService.getClientes(uid);
+      let userProjetos = await dbService.getProjetos(uid);
+      let userRecebimentos = await dbService.getRecebimentos(uid);
+
+      // Auto-recover/re-seed if completely wiped
+      if (userClientes.length === 0 && userProjetos.length === 0 && userRecebimentos.length === 0) {
+        const seeded = await dbService.seedDemoData(uid);
+        userClientes = seeded.clientes;
+        userProjetos = seeded.projetos;
+        userRecebimentos = seeded.recebimentos;
+      }
 
       setClientes(userClientes);
       setProjetos(userProjetos);
@@ -332,8 +331,9 @@ export default function App() {
 
 
   // Sum current month receipts to calculate progress for "Próxima Meta" widget
-  const currentYearStr = '2026';
-  const currentMonthStr = '06'; // June
+  const now = new Date();
+  const currentYearStr = now.getFullYear().toString();
+  const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
   const faturamentoMesSidebar = recebimentos
     .filter(r => r.status === 'Recebido' && r.dataRecebimento && r.dataRecebimento.startsWith(`${currentYearStr}-${currentMonthStr}`))
     .reduce((sum, r) => sum + r.valor, 0);

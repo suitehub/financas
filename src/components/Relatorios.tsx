@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   TrendingUp,
   FileText,
@@ -34,9 +34,30 @@ interface RelatoriosProps {
 
 export default function Relatorios({ clientes, projetos, recebimentos }: RelatoriosProps) {
 
+  // Period lists for selection
+  const monthsList = [
+    { value: '01', label: 'Janeiro' },
+    { value: '02', label: 'Fevereiro' },
+    { value: '03', label: 'Março' },
+    { value: '04', label: 'Abril' },
+    { value: '05', label: 'Maio' },
+    { value: '06', label: 'Junho' },
+    { value: '07', label: 'Julho' },
+    { value: '08', label: 'Agosto' },
+    { value: '09', label: 'Setembro' },
+    { value: '10', label: 'Outubro' },
+    { value: '11', label: 'Novembro' },
+    { value: '12', label: 'Dezembro' }
+  ];
+  const yearsList = ['2024', '2025', '2026', '2027'];
+
   // Context years/months
-  const currentYearStr = '2026';
-  const currentMonthStr = '06'; // June
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState<string>(now.getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(now.getMonth() + 1).padStart(2, '0'));
+
+  const currentYearStr = selectedYear;
+  const currentMonthStr = selectedMonth;
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -184,10 +205,35 @@ export default function Relatorios({ clientes, projetos, recebimentos }: Relator
   return (
     <div className="space-y-6">
       
-      {/* Title Header */}
-      <div className="bg-white dark:bg-zinc-900 p-5 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xs">
-        <h2 className="text-lg font-black text-gray-950 dark:text-zinc-50 tracking-tight">Estatísticas & Relatórios</h2>
-        <p className="text-xs text-gray-400 dark:text-zinc-500">Analise detalhadamente a saúde financeira do seu faturamento.</p>
+      {/* Title Header with Selectors */}
+      <div className="bg-white dark:bg-zinc-900 p-5 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-black text-gray-950 dark:text-zinc-50 tracking-tight">Estatísticas & Relatórios</h2>
+          <p className="text-xs text-gray-400 dark:text-zinc-500">Analise detalhadamente a saúde financeira do seu faturamento.</p>
+        </div>
+        
+        {/* Period Selector in Header */}
+        <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-850 p-1.5 rounded-2xl border border-slate-100/80 dark:border-zinc-800 shrink-0 self-start sm:self-center">
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-700/80 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+          >
+            {monthsList.map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-700/80 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+          >
+            {yearsList.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* KPI Stats Panel Grid */}
@@ -243,7 +289,7 @@ export default function Relatorios({ clientes, projetos, recebimentos }: Relator
               <h3 className="text-sm font-bold text-gray-950 dark:text-zinc-100">Evolução Mensal</h3>
               <p className="text-xs text-gray-400 dark:text-zinc-500">Histórico de faturamento acumulado por mês</p>
             </div>
-            <span className="text-xs text-gray-500 bg-gray-100 dark:bg-zinc-800 px-2.5 py-1 rounded-md font-bold">2026</span>
+            <span className="text-xs text-gray-500 bg-gray-100 dark:bg-zinc-800 px-2.5 py-1 rounded-md font-bold">{currentYearStr}</span>
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
