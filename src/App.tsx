@@ -316,8 +316,20 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       let errorMsg = 'Erro ao salvar recebimento.';
+      let details = '';
       if (err instanceof Error) {
-        errorMsg += '\nDetalhes: ' + err.message;
+        details = err.message;
+        if (err.message.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(err.message);
+            if (parsed.error) {
+              details = parsed.error;
+            }
+          } catch (e) {
+            // Ignored
+          }
+        }
+        errorMsg += '\nDetalhes: ' + details;
       } else if (typeof err === 'object' && err !== null) {
         errorMsg += '\nDetalhes: ' + JSON.stringify(err);
       }
@@ -443,6 +455,7 @@ export default function App() {
             onNavigateTo={(tab, id) => {
               setCurrentTab(tab as TabType);
             }}
+            userName={userName}
           />
         );
       case 'Recebimentos':

@@ -23,6 +23,7 @@ interface DashboardProps {
   recebimentos: Recebimento[];
   onOpenNewRecebimento: () => void;
   onNavigateTo: (tab: string, itemDetailId?: string) => void;
+  userName?: string;
 }
 
 export default function Dashboard({
@@ -30,7 +31,8 @@ export default function Dashboard({
   projetos,
   recebimentos,
   onOpenNewRecebimento,
-  onNavigateTo
+  onNavigateTo,
+  userName
 }: DashboardProps) {
 
   // Periods lists for filtering
@@ -142,7 +144,7 @@ export default function Dashboard({
             Painel Financeiro
           </span>
           <h1 className="text-2xl font-bold tracking-tight mt-2 font-sans">
-            Olá, rickyjorgecastro
+            Olá, {userName || 'Usuário'}
           </h1>
           <p className="text-slate-300 text-sm mt-1 max-w-md">
             Seja bem-vindo ao Suite Hub Finanças. Acompanhe seu faturamento em tempo real e de forma descomplicada.
