@@ -29,6 +29,28 @@ const cleanData = <T extends Record<string, any>>(obj: T): T => {
 
 export const dbService = {
   // --- USUARIOS ---
+  async getUsuario(userId: string): Promise<Usuario | null> {
+    const userDocRef = doc(db, 'usuarios', userId);
+    try {
+      const docSnap = await getDoc(userDocRef);
+      if (docSnap.exists()) {
+        return docSnap.data() as Usuario;
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  },
+
+  async updateUsuario(userId: string, updates: Partial<Usuario>): Promise<void> {
+    const userDocRef = doc(db, 'usuarios', userId);
+    try {
+      await updateDoc(userDocRef, cleanData(updates));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `usuarios/${userId}`);
+    }
+  },
+
   async syncUsuario(userId: string, email: string, nome: string): Promise<Usuario> {
     const path = `usuarios/${userId}`;
     const userDocRef = doc(db, 'usuarios', userId);

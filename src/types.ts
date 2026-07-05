@@ -13,6 +13,7 @@ export interface Usuario {
   nome: string;
   createdAt: string;
   lastLogin: string;
+  demoSeeded?: boolean;
 }
 
 export interface Projeto {

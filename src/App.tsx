@@ -117,9 +117,12 @@ export default function App() {
       let userProjetos = await dbService.getProjetos(uid);
       let userRecebimentos = await dbService.getRecebimentos(uid);
 
-      // If user is new or has no data, let's seed demo data to offer a great out-of-the-box experience!
-      if (userClientes.length === 0 && userProjetos.length === 0 && userRecebimentos.length === 0) {
+      const userProfile = await dbService.getUsuario(uid);
+
+      // If user is new or has no data, and has never had demo data seeded or reset, let's seed demo data to offer a great out-of-the-box experience!
+      if (!userProfile?.demoSeeded && userClientes.length === 0 && userProjetos.length === 0 && userRecebimentos.length === 0) {
         const seeded = await dbService.seedDemoData(uid);
+        await dbService.updateUsuario(uid, { demoSeeded: true });
         setClientes(seeded.clientes);
         setProjetos(seeded.projetos);
         setRecebimentos(seeded.recebimentos);
@@ -186,6 +189,9 @@ export default function App() {
         });
 
         await batch.commit();
+
+        // Mark demoSeeded as true to keep the database fully clean and avoid automatic re-seeding on page load
+        await dbService.updateUsuario(userId, { demoSeeded: true });
 
         setClientes([]);
         setProjetos([]);
@@ -283,17 +289,39 @@ export default function App() {
         await dbService.updateRecebimento(editingRecebimento.id, singlePayload);
       } else {
         if (Array.isArray(payloads)) {
+          // Use high performance atomic writeBatch for multiple installment saves to prevent partial failures and sequential delays
+          const batch = writeBatch(db);
           for (const p of payloads) {
-            await dbService.addRecebimento(userId, p);
+            const id = Math.random().toString(36).substring(2, 15);
+            const novoRecebimento = {
+              ...p,
+              id,
+              userId,
+              createdAt: new Date().toISOString()
+            };
+            const cleaned = {} as any;
+            Object.keys(novoRecebimento).forEach((key) => {
+              if ((novoRecebimento as any)[key] !== undefined) {
+                cleaned[key] = (novoRecebimento as any)[key];
+              }
+            });
+            batch.set(doc(db, 'recebimentos', id), cleaned);
           }
+          await batch.commit();
         } else {
           await dbService.addRecebimento(userId, payloads);
         }
       }
       await loadAllUserData(userId);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Erro ao salvar recebimento.');
+      let errorMsg = 'Erro ao salvar recebimento.';
+      if (err instanceof Error) {
+        errorMsg += '\nDetalhes: ' + err.message;
+      } else if (typeof err === 'object' && err !== null) {
+        errorMsg += '\nDetalhes: ' + JSON.stringify(err);
+      }
+      alert(errorMsg);
     } finally {
       setDataLoading(false);
     }
