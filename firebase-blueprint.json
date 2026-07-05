@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "Cliente": {
+      "title": "Cliente",
+      "description": "Cliente do usuário",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "nome": { "type": "string" },
+        "email": { "type": "string" },
+        "telefone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "nome", "createdAt"]
+    },
+    "Projeto": {
+      "title": "Projeto",
+      "description": "Projeto do cliente",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "nome": { "type": "string" },
+        "clienteId": { "type": "string" },
+        "clienteNome": { "type": "string" },
+        "categoria": { "type": "string" },
+        "valorContratado": { "type": "number" },
+        "dataInicio": { "type": "string" },
+        "status": { "type": "string", "enum": ["Planejamento", "Desenvolvimento", "Testes", "Entregue", "Suporte"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "nome", "clienteId", "clienteNome", "categoria", "valorContratado", "dataInicio", "status", "createdAt"]
+    },
+    "Recebimento": {
+      "title": "Recebimento",
+      "description": "Recebimento financeiro previsto ou recebido",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "clienteId": { "type": "string" },
+        "clienteNome": { "type": "string" },
+        "projetoId": { "type": "string" },
+        "projetoNome": { "type": "string" },
+        "categoria": { "type": "string" },
+        "origem": { "type": "string" },
+        "valor": { "type": "number" },
+        "dataPrevista": { "type": "string" },
+        "dataRecebimento": { "type": "string" },
+        "formaPagamento": { "type": "string" },
+        "status": { "type": "string", "enum": ["Recebido", "A Receber"] },
+        "notaFiscal": { "type": "string", "enum": ["Emitida", "Pendente", "Não Necessária"] },
+        "nfNumero": { "type": "string" },
+        "nfDataEmissao": { "type": "string" },
+        "observacoes": { "type": "string" },
+        "parcelado": { "type": "boolean" },
+        "parcelaAtual": { "type": "number" },
+        "totalParcelas": { "type": "number" },
+        "grupoParcelasId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "clienteId", "clienteNome", "projetoId", "projetoNome", "categoria", "origem", "valor", "dataPrevista", "formaPagamento", "status", "notaFiscal", "createdAt"]
+    }
+  },
+  "firestore": {
+    "clientes/{clienteId}": {
+      "schema": "Cliente",
+      "description": "Coleção de clientes cadastrados pelos usuários"
+    },
+    "projetos/{projetoId}": {
+      "schema": "Projeto",
+      "description": "Coleção de projetos cadastrados pelos usuários"
+    },
+    "recebimentos/{recebimentoId}": {
+      "schema": "Recebimento",
+      "description": "Coleção de recebimentos e transações financeiras cadastradas pelos usuários"
+    }
+  }
+}

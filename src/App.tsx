@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from './services/dbService';
 import { Cliente, Projeto, Recebimento, StatusProjetoType } from './types';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, writeBatch } from 'firebase/firestore';
+import { auth, db } from './lib/firebase';
 
 // Icons
 import {
@@ -15,7 +18,9 @@ import {
   Moon,
   Sun,
   Loader2,
-  TrendingUp
+  TrendingUp,
+  Settings,
+  LogOut
 } from 'lucide-react';
 
 // Components
@@ -28,12 +33,15 @@ import ProjetosList from './components/ProjetosList';
 import ClientesList from './components/ClientesList';
 import CalendarioFinanceiro from './components/CalendarioFinanceiro';
 import Relatorios from './components/Relatorios';
+import LoginScreen from './components/LoginScreen';
+import Configuracoes from './components/Configuracoes';
 
-type TabType = 'Dashboard' | 'Recebimentos' | 'Projetos' | 'Clientes' | 'Relatorios' | 'Calendario';
+type TabType = 'Dashboard' | 'Recebimentos' | 'Projetos' | 'Clientes' | 'Relatorios' | 'Calendario' | 'Configuracoes';
 
 export default function App() {
   // Authentication & Loading state
   const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>('');
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
 
@@ -46,6 +54,12 @@ export default function App() {
 
   // Navigation tab
   const [currentTab, setCurrentTab] = useState<TabType>('Dashboard');
+
+  // Próxima Meta state
+  const [sidebarGoal, setSidebarGoal] = useState<number>(() => {
+    const saved = localStorage.getItem('suitehub_meta_mensal');
+    return saved ? parseFloat(saved) : 15000;
+  });
 
   // Core Data Lists
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -66,18 +80,25 @@ export default function App() {
     localStorage.setItem('suitehub-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // Local Data Initialization
+  // Listen to Firebase auth state changes
   useEffect(() => {
-    const initLocalData = async () => {
-      setAuthLoading(true);
-      const uid = 'local-user';
-      setUserId(uid);
-
-      await loadAllUserData(uid);
+    setAuthLoading(true);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUserId(user.uid);
+        setUserName(user.displayName || user.email?.split('@')[0] || 'Usuário');
+        await loadAllUserData(user.uid);
+      } else {
+        setUserId(null);
+        setUserName('');
+        setClientes([]);
+        setProjetos([]);
+        setRecebimentos([]);
+      }
       setAuthLoading(false);
-    };
+    });
 
-    initLocalData();
+    return () => unsubscribe();
   }, []);
 
   // Sync user data
@@ -88,17 +109,17 @@ export default function App() {
       let userProjetos = await dbService.getProjetos(uid);
       let userRecebimentos = await dbService.getRecebimentos(uid);
 
-      // Auto-recover/re-seed if completely wiped
+      // If user is new or has no data, let's seed demo data to offer a great out-of-the-box experience!
       if (userClientes.length === 0 && userProjetos.length === 0 && userRecebimentos.length === 0) {
         const seeded = await dbService.seedDemoData(uid);
-        userClientes = seeded.clientes;
-        userProjetos = seeded.projetos;
-        userRecebimentos = seeded.recebimentos;
+        setClientes(seeded.clientes);
+        setProjetos(seeded.projetos);
+        setRecebimentos(seeded.recebimentos);
+      } else {
+        setClientes(userClientes);
+        setProjetos(userProjetos);
+        setRecebimentos(userRecebimentos);
       }
-
-      setClientes(userClientes);
-      setProjetos(userProjetos);
-      setRecebimentos(userRecebimentos);
     } catch (err) {
       console.error("Error loading user data:", err);
     } finally {
@@ -106,17 +127,129 @@ export default function App() {
     }
   };
 
-  const handleResetData = async () => {
-    if (confirm('Deseja realmente redefinir o aplicativo? Isso apagará todas as suas informações locais permanentemente, deixando o sistema totalmente limpo.')) {
-      setAuthLoading(true);
-      localStorage.removeItem('suitehub_clientes');
-      localStorage.removeItem('suitehub_projetos');
-      localStorage.removeItem('suitehub_recebimentos');
+  const handleLoginSuccess = async (uid: string, name: string) => {
+    setUserId(uid);
+    setUserName(name);
+    await loadAllUserData(uid);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setUserId(null);
+      setUserName('');
       setClientes([]);
       setProjetos([]);
       setRecebimentos([]);
-      setAuthLoading(false);
+      setCurrentTab('Dashboard');
+    } catch (e) {
+      console.error('Error signing out:', e);
     }
+  };
+
+  const handleResetData = async () => {
+    if (!userId) return;
+    if (confirm('Deseja realmente redefinir o aplicativo? Isso apagará todas as suas informações do banco de dados permanentemente, deixando o sistema totalmente limpo.')) {
+      setAuthLoading(true);
+      try {
+        const batch = writeBatch(db);
+
+        clientes.forEach((c) => {
+          batch.delete(doc(db, 'clientes', c.id));
+        });
+
+        projetos.forEach((p) => {
+          batch.delete(doc(db, 'projetos', p.id));
+        });
+
+        recebimentos.forEach((r) => {
+          batch.delete(doc(db, 'recebimentos', r.id));
+        });
+
+        await batch.commit();
+
+        setClientes([]);
+        setProjetos([]);
+        setRecebimentos([]);
+      } catch (e) {
+        console.error('Error clearing data:', e);
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+  };
+
+  const handleExportBackup = () => {
+    try {
+      const backupData = {
+        clientes,
+        projetos,
+        recebimentos,
+        setupCompleted: 'clean',
+        exportedAt: new Date().toISOString()
+      };
+
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.href = url;
+      downloadAnchor.download = `suitehub_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      document.body.removeChild(downloadAnchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao exportar os dados de backup.');
+    }
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result;
+        if (typeof text !== 'string') return;
+        const backupData = JSON.parse(text);
+
+        if (!backupData.clientes || !backupData.projetos || !backupData.recebimentos) {
+          alert('Arquivo de backup inválido. Não foi possível carregar os dados.');
+          return;
+        }
+
+        if (confirm('Importar este backup irá substituir todos os dados atuais do aplicativo. Deseja continuar?')) {
+          setAuthLoading(true);
+          const currentUserId = userId || 'unknown';
+          const batch = writeBatch(db);
+
+          backupData.clientes.forEach((c: any) => {
+            batch.set(doc(db, 'clientes', c.id), { ...c, userId: currentUserId });
+          });
+
+          backupData.projetos.forEach((p: any) => {
+            batch.set(doc(db, 'projetos', p.id), { ...p, userId: currentUserId });
+          });
+
+          backupData.recebimentos.forEach((r: any) => {
+            batch.set(doc(db, 'recebimentos', r.id), { ...r, userId: currentUserId });
+          });
+
+          await batch.commit();
+          
+          await loadAllUserData(currentUserId);
+          setAuthLoading(false);
+          alert('Backup importado com sucesso!');
+        }
+      } catch (err) {
+        alert('Erro ao importar o arquivo de backup. Certifique-se de que é um arquivo JSON válido.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset file input
   };
 
   // --- ACTIONS HANDLERS ---
@@ -313,10 +446,28 @@ export default function App() {
             recebimentos={recebimentos}
           />
         );
+      case 'Configuracoes':
+        return (
+          <Configuracoes
+            clientes={clientes}
+            projetos={projetos}
+            recebimentos={recebimentos}
+            sidebarGoal={sidebarGoal}
+            setSidebarGoal={setSidebarGoal}
+            onResetData={handleResetData}
+            onExportBackup={handleExportBackup}
+            onImportBackup={handleImportBackup}
+          />
+        );
       default:
         return null;
     }
   };
+
+  // Login screen gate
+  if (!userId && !authLoading) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
 
   // Loading indicator for startup
   if (authLoading) {
@@ -328,8 +479,6 @@ export default function App() {
     );
   }
 
-
-
   // Sum current month receipts to calculate progress for "Próxima Meta" widget
   const now = new Date();
   const currentYearStr = now.getFullYear().toString();
@@ -338,7 +487,6 @@ export default function App() {
     .filter(r => r.status === 'Recebido' && r.dataRecebimento && r.dataRecebimento.startsWith(`${currentYearStr}-${currentMonthStr}`))
     .reduce((sum, r) => sum + r.valor, 0);
 
-  const sidebarGoal = 15000;
   const sidebarGoalProgress = Math.min(Math.round((faturamentoMesSidebar / sidebarGoal) * 100), 100);
 
   return (
@@ -371,7 +519,8 @@ export default function App() {
               { id: 'Projetos', label: 'Projetos', icon: Briefcase },
               { id: 'Clientes', label: 'Clientes', icon: Users },
               { id: 'Calendario', label: 'Calendário', icon: Calendar },
-              { id: 'Relatorios', label: 'Relatórios', icon: BarChart2 }
+              { id: 'Relatorios', label: 'Relatórios', icon: BarChart2 },
+              { id: 'Configuracoes', label: 'Configurações', icon: Settings }
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = currentTab === tab.id;
@@ -398,7 +547,9 @@ export default function App() {
           <div className="bg-slate-50 dark:bg-zinc-850 p-4 rounded-2xl border border-slate-100 dark:border-zinc-800">
             <p className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Próxima Meta</p>
             <div className="flex items-baseline justify-between">
-              <p className="text-xs font-black text-slate-700 dark:text-zinc-300">R$ 15.000 / mês</p>
+              <p className="text-xs font-black text-slate-700 dark:text-zinc-300">
+                {sidebarGoal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} / mês
+              </p>
               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{sidebarGoalProgress}%</span>
             </div>
             <div className="w-full bg-slate-200 dark:bg-zinc-700 h-1.5 mt-2 rounded-full overflow-hidden">
@@ -409,18 +560,27 @@ export default function App() {
 
         {/* User profile & controls */}
         <div className="border-t border-gray-100 dark:border-zinc-800 pt-4 space-y-3">
-          <div className="flex items-center gap-3 px-1.5">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-500 font-extrabold flex items-center justify-center text-xs">
-              U
+          <div className="flex items-center justify-between px-1.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-500 font-extrabold flex items-center justify-center text-xs shrink-0">
+                {userName ? userName.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-black text-gray-900 dark:text-zinc-100 block truncate" title={userName}>
+                  {userName}
+                </span>
+                <span className="text-[9px] text-gray-400 block truncate">
+                  Financeiro
+                </span>
+              </div>
             </div>
-            <div className="min-w-0">
-              <span className="text-xs font-black text-gray-900 dark:text-zinc-100 block truncate">
-                rickjorgecastro
-              </span>
-              <span className="text-[9px] text-gray-400 block truncate">
-                Desenvolvedor
-              </span>
-            </div>
+            <button
+              onClick={handleLogout}
+              title="Sair da Conta"
+              className="p-1.5 text-gray-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-slate-50 dark:hover:bg-zinc-850 cursor-pointer"
+            >
+              <LogOut size={15} />
+            </button>
           </div>
 
           <div className="flex items-center justify-center px-1">
@@ -440,7 +600,15 @@ export default function App() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleLogout}
+            title="Sair da Conta"
+            className="p-1.5 bg-slate-50 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 rounded-lg text-xs font-bold hover:bg-slate-100 dark:hover:bg-zinc-750 cursor-pointer flex items-center gap-1"
+          >
+            <LogOut size={13} />
+            <span className="text-[10px]">Sair</span>
+          </button>
           <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
         </div>
       </header>
@@ -489,8 +657,8 @@ export default function App() {
           { id: 'Recebimentos', label: '💰', icon: DollarSign },
           { id: 'Projetos', label: '📁', icon: Briefcase },
           { id: 'Clientes', label: '👥', icon: Users },
-          { id: 'Calendario', label: '📅', icon: Calendar },
-          { id: 'Relatorios', label: '📊', icon: BarChart2 }
+          { id: 'Relatorios', label: '📊', icon: BarChart2 },
+          { id: 'Configuracoes', label: '⚙️', icon: Settings }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = currentTab === tab.id;
@@ -508,7 +676,7 @@ export default function App() {
               title={tab.id}
             >
               <Icon size={18} />
-              <span className="text-[8px] mt-0.5 font-bold hidden xs:block">{tab.id === 'Calendario' ? 'Calendário' : tab.id === 'Relatorios' ? 'Relatórios' : tab.id}</span>
+              <span className="text-[8px] mt-0.5 font-bold hidden xs:block">{tab.id === 'Configuracoes' ? 'Configurações' : tab.id === 'Relatorios' ? 'Relatórios' : tab.id}</span>
             </button>
           );
         })}
@@ -529,6 +697,8 @@ export default function App() {
           initialRecebimento={editingRecebimento}
         />
       )}
+
+
 
     </div>
   );

@@ -1,30 +1,39 @@
 import { Cliente, Projeto, Recebimento } from '../types';
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  writeBatch
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 // Helper to generate IDs
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
-// Helper keys
-const CLIENTES_KEY = 'suitehub_clientes';
-const PROJETOS_KEY = 'suitehub_projetos';
-const RECEBIMENTOS_KEY = 'suitehub_recebimentos';
-
-// Helper storage load/save
-const getLocalData = <T>(key: string): T[] => {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : [];
-};
-
-const saveLocalData = <T>(key: string, data: T[]): void => {
-  localStorage.setItem(key, JSON.stringify(data));
-};
-
 export const dbService = {
   // --- CLIENTES ---
   async getClientes(userId: string): Promise<Cliente[]> {
-    const list = getLocalData<Cliente>(CLIENTES_KEY);
-    return list
-      .filter((c) => c.userId === userId)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const path = 'clientes';
+    try {
+      const q = query(
+        collection(db, path),
+        where('userId', '==', userId)
+      );
+      const snapshot = await getDocs(q);
+      const list: Cliente[] = [];
+      snapshot.forEach((doc) => {
+        list.push(doc.data() as Cliente);
+      });
+      return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
   async addCliente(userId: string, nome: string, email = '', telefone = ''): Promise<Cliente> {
@@ -37,33 +46,52 @@ export const dbService = {
       telefone,
       createdAt: new Date().toISOString()
     };
-    const list = getLocalData<Cliente>(CLIENTES_KEY);
-    list.push(cliente);
-    saveLocalData(CLIENTES_KEY, list);
-    return cliente;
+    const path = `clientes/${id}`;
+    try {
+      await setDoc(doc(db, 'clientes', id), cliente);
+      return cliente;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      throw error;
+    }
   },
 
   async updateCliente(id: string, updates: Partial<Omit<Cliente, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const list = getLocalData<Cliente>(CLIENTES_KEY);
-    const index = list.findIndex((item) => item.id === id);
-    if (index !== -1) {
-      list[index] = { ...list[index], ...updates };
-      saveLocalData(CLIENTES_KEY, list);
+    const path = `clientes/${id}`;
+    try {
+      await updateDoc(doc(db, 'clientes', id), updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
     }
   },
 
   async deleteCliente(id: string): Promise<void> {
-    const list = getLocalData<Cliente>(CLIENTES_KEY);
-    const filtered = list.filter((item) => item.id !== id);
-    saveLocalData(CLIENTES_KEY, filtered);
+    const path = `clientes/${id}`;
+    try {
+      await deleteDoc(doc(db, 'clientes', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
   },
 
   // --- PROJETOS ---
   async getProjetos(userId: string): Promise<Projeto[]> {
-    const list = getLocalData<Projeto>(PROJETOS_KEY);
-    return list
-      .filter((p) => p.userId === userId)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const path = 'projetos';
+    try {
+      const q = query(
+        collection(db, path),
+        where('userId', '==', userId)
+      );
+      const snapshot = await getDocs(q);
+      const list: Projeto[] = [];
+      snapshot.forEach((doc) => {
+        list.push(doc.data() as Projeto);
+      });
+      return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
   async addProjeto(userId: string, projeto: Omit<Projeto, 'id' | 'userId' | 'createdAt'>): Promise<Projeto> {
@@ -74,33 +102,52 @@ export const dbService = {
       userId,
       createdAt: new Date().toISOString()
     };
-    const list = getLocalData<Projeto>(PROJETOS_KEY);
-    list.push(novoProjeto);
-    saveLocalData(PROJETOS_KEY, list);
-    return novoProjeto;
+    const path = `projetos/${id}`;
+    try {
+      await setDoc(doc(db, 'projetos', id), novoProjeto);
+      return novoProjeto;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      throw error;
+    }
   },
 
   async updateProjeto(id: string, updates: Partial<Omit<Projeto, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const list = getLocalData<Projeto>(PROJETOS_KEY);
-    const index = list.findIndex((item) => item.id === id);
-    if (index !== -1) {
-      list[index] = { ...list[index], ...updates };
-      saveLocalData(PROJETOS_KEY, list);
+    const path = `projetos/${id}`;
+    try {
+      await updateDoc(doc(db, 'projetos', id), updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
     }
   },
 
   async deleteProjeto(id: string): Promise<void> {
-    const list = getLocalData<Projeto>(PROJETOS_KEY);
-    const filtered = list.filter((item) => item.id !== id);
-    saveLocalData(PROJETOS_KEY, filtered);
+    const path = `projetos/${id}`;
+    try {
+      await deleteDoc(doc(db, 'projetos', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
   },
 
   // --- RECEBIMENTOS ---
   async getRecebimentos(userId: string): Promise<Recebimento[]> {
-    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
-    return list
-      .filter((r) => r.userId === userId)
-      .sort((a, b) => b.dataPrevista.localeCompare(a.dataPrevista));
+    const path = 'recebimentos';
+    try {
+      const q = query(
+        collection(db, path),
+        where('userId', '==', userId)
+      );
+      const snapshot = await getDocs(q);
+      const list: Recebimento[] = [];
+      snapshot.forEach((doc) => {
+        list.push(doc.data() as Recebimento);
+      });
+      return list.sort((a, b) => b.dataPrevista.localeCompare(a.dataPrevista));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
 
   async addRecebimento(userId: string, recebimento: Omit<Recebimento, 'id' | 'userId' | 'createdAt'>): Promise<Recebimento> {
@@ -111,25 +158,32 @@ export const dbService = {
       userId,
       createdAt: new Date().toISOString()
     };
-    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
-    list.push(novoRecebimento);
-    saveLocalData(RECEBIMENTOS_KEY, list);
-    return novoRecebimento;
+    const path = `recebimentos/${id}`;
+    try {
+      await setDoc(doc(db, 'recebimentos', id), novoRecebimento);
+      return novoRecebimento;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      throw error;
+    }
   },
 
   async updateRecebimento(id: string, updates: Partial<Omit<Recebimento, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
-    const index = list.findIndex((item) => item.id === id);
-    if (index !== -1) {
-      list[index] = { ...list[index], ...updates };
-      saveLocalData(RECEBIMENTOS_KEY, list);
+    const path = `recebimentos/${id}`;
+    try {
+      await updateDoc(doc(db, 'recebimentos', id), updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
     }
   },
 
   async deleteRecebimento(id: string): Promise<void> {
-    const list = getLocalData<Recebimento>(RECEBIMENTOS_KEY);
-    const filtered = list.filter((item) => item.id !== id);
-    saveLocalData(RECEBIMENTOS_KEY, filtered);
+    const path = `recebimentos/${id}`;
+    try {
+      await deleteDoc(doc(db, 'recebimentos', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
   },
 
   // --- AUTO SEEDING FOR EMPTY DEMO ACCOUNT ---
@@ -141,10 +195,10 @@ export const dbService = {
     };
 
     // 1. Seed Clientes
-    const c1Id = 'demo-c1';
-    const c2Id = 'demo-c2';
-    const c3Id = 'demo-c3';
-    const c4Id = 'demo-c4';
+    const c1Id = `demo-c1-${userId}`;
+    const c2Id = `demo-c2-${userId}`;
+    const c3Id = `demo-c3-${userId}`;
+    const c4Id = `demo-c4-${userId}`;
 
     const client1: Cliente = { id: c1Id, userId, nome: 'Clínica ABC Médica', email: 'contato@clinicaabc.com.br', telefone: '(11) 98888-7777', createdAt: dateOffset(-45) };
     const client2: Cliente = { id: c2Id, userId, nome: 'TechVibe Creative Studio', email: 'hello@techvibe.design', telefone: '(21) 97777-6666', createdAt: dateOffset(-30) };
@@ -154,10 +208,10 @@ export const dbService = {
     const clientes = [client1, client2, client3, client4];
 
     // 2. Seed Projetos
-    const p1Id = 'demo-p1';
-    const p2Id = 'demo-p2';
-    const p3Id = 'demo-p3';
-    const p4Id = 'demo-p4';
+    const p1Id = `demo-p1-${userId}`;
+    const p2Id = `demo-p2-${userId}`;
+    const p3Id = `demo-p3-${userId}`;
+    const p4Id = `demo-p4-${userId}`;
 
     const proj1: Projeto = {
       id: p1Id,
@@ -214,13 +268,13 @@ export const dbService = {
     const projetos = [proj1, proj2, proj3, proj4];
 
     // 3. Seed Recebimentos
-    const r1Id = 'demo-r1';
-    const r2Id = 'demo-r2';
-    const r3Id = 'demo-r3';
-    const r4Id = 'demo-r4';
-    const r5Id = 'demo-r5';
-    const r6Id = 'demo-r6';
-    const r7Id = 'demo-r7';
+    const r1Id = `demo-r1-${userId}`;
+    const r2Id = `demo-r2-${userId}`;
+    const r3Id = `demo-r3-${userId}`;
+    const r4Id = `demo-r4-${userId}`;
+    const r5Id = `demo-r5-${userId}`;
+    const r6Id = `demo-r6-${userId}`;
+    const r7Id = `demo-r7-${userId}`;
 
     const rec1: Recebimento = {
       id: r1Id,
@@ -360,10 +414,25 @@ export const dbService = {
 
     const recebimentos = [rec1, rec2, rec3, rec4, rec5, rec6, rec7];
 
-    // Overwrite with initial seeded data
-    saveLocalData(CLIENTES_KEY, clientes);
-    saveLocalData(PROJETOS_KEY, projetos);
-    saveLocalData(RECEBIMENTOS_KEY, recebimentos);
+    try {
+      const batch = writeBatch(db);
+
+      clientes.forEach((c) => {
+        batch.set(doc(db, 'clientes', c.id), c);
+      });
+
+      projetos.forEach((p) => {
+        batch.set(doc(db, 'projetos', p.id), p);
+      });
+
+      recebimentos.forEach((r) => {
+        batch.set(doc(db, 'recebimentos', r.id), r);
+      });
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'batch-seed-data');
+    }
 
     return { clientes, projetos, recebimentos };
   }
