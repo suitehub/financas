@@ -7,6 +7,14 @@ export interface Cliente {
   createdAt: string;
 }
 
+export interface Usuario {
+  id: string;
+  email: string;
+  nome: string;
+  createdAt: string;
+  lastLogin: string;
+}
+
 export interface Projeto {
   id: string;
   userId: string;

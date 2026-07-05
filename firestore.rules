@@ -50,5 +50,12 @@ service cloud.firestore {
                     && request.resource.data.valor is number && request.resource.data.valor >= 0;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
+
+    // --- USUARIOS ---
+    match /usuarios/{usuarioId} {
+      allow read: if isSignedIn() && request.auth.uid == usuarioId;
+      allow create: if isSignedIn() && request.auth.uid == usuarioId;
+      allow update: if isSignedIn() && request.auth.uid == usuarioId;
+    }
   }
 }

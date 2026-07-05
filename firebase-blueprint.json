@@ -61,6 +61,19 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "userId", "clienteId", "clienteNome", "projetoId", "projetoNome", "categoria", "origem", "valor", "dataPrevista", "formaPagamento", "status", "notaFiscal", "createdAt"]
+    },
+    "Usuario": {
+      "title": "Usuario",
+      "description": "Perfil do usuário integrado com autenticação",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "nome": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "nome", "createdAt", "lastLogin"]
     }
   },
   "firestore": {
@@ -75,6 +88,10 @@
     "recebimentos/{recebimentoId}": {
       "schema": "Recebimento",
       "description": "Coleção de recebimentos e transações financeiras cadastradas pelos usuários"
+    },
+    "usuarios/{usuarioId}": {
+      "schema": "Usuario",
+      "description": "Coleção de perfis de usuários do sistema"
     }
   }
 }

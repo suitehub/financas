@@ -85,8 +85,16 @@ export default function App() {
     setAuthLoading(true);
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        setUserId(user.uid);
-        setUserName(user.displayName || user.email?.split('@')[0] || 'Usuário');
+        try {
+          // Sync user profile in the database
+          const syncedUser = await dbService.syncUsuario(user.uid, user.email || '', user.displayName || '');
+          setUserId(user.uid);
+          setUserName(syncedUser.nome);
+        } catch (err) {
+          console.error("Error syncing user in database:", err);
+          setUserId(user.uid);
+          setUserName(user.displayName || user.email?.split('@')[0] || 'Usuário');
+        }
         await loadAllUserData(user.uid);
       } else {
         setUserId(null);
@@ -130,6 +138,17 @@ export default function App() {
   const handleLoginSuccess = async (uid: string, name: string) => {
     setUserId(uid);
     setUserName(name);
+    
+    // Sync user during successful login manually if auth state is delayed
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      try {
+        const syncedUser = await dbService.syncUsuario(uid, currentUser.email || '', name);
+        setUserName(syncedUser.nome);
+      } catch (err) {
+        console.error("Error syncing user during login success:", err);
+      }
+    }
     await loadAllUserData(uid);
   };
 

@@ -1,7 +1,8 @@
-import { Cliente, Projeto, Recebimento } from '../types';
+import { Cliente, Projeto, Recebimento, Usuario } from '../types';
 import { 
   collection, 
   doc, 
+  getDoc,
   getDocs, 
   setDoc, 
   updateDoc, 
@@ -16,6 +17,52 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
 export const dbService = {
+  // --- USUARIOS ---
+  async syncUsuario(userId: string, email: string, nome: string): Promise<Usuario> {
+    const path = `usuarios/${userId}`;
+    const userDocRef = doc(db, 'usuarios', userId);
+    const now = new Date().toISOString();
+    
+    try {
+      const docSnap = await getDoc(userDocRef);
+      let user: Usuario;
+      
+      if (docSnap.exists()) {
+        const existingData = docSnap.data();
+        user = {
+          id: userId,
+          email: email,
+          nome: nome || existingData.nome || 'Usuário',
+          createdAt: existingData.createdAt || now,
+          lastLogin: now
+        };
+        await updateDoc(userDocRef, {
+          nome: user.nome,
+          lastLogin: user.lastLogin
+        });
+      } else {
+        user = {
+          id: userId,
+          email: email,
+          nome: nome || 'Usuário',
+          createdAt: now,
+          lastLogin: now
+        };
+        await setDoc(userDocRef, user);
+      }
+      return user;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+      return {
+        id: userId,
+        email,
+        nome: nome || 'Usuário',
+        createdAt: now,
+        lastLogin: now
+      };
+    }
+  },
+
   // --- CLIENTES ---
   async getClientes(userId: string): Promise<Cliente[]> {
     const path = 'clientes';
