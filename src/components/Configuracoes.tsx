@@ -173,20 +173,20 @@ export default function Configuracoes({
             </div>
 
             <p className="text-xs text-gray-500 dark:text-zinc-400 leading-relaxed">
-              Atualmente, seus dados são armazenados de forma 100% segura e privada diretamente no armazenamento local do seu navegador (<strong className="font-bold">localStorage</strong>). Como você mencionou que irá integrar em breve com o banco de dados:
+              Seus dados estão sincronizados em tempo real de forma 100% segura no banco de dados em nuvem do <strong className="font-bold">Google Cloud Firestore</strong> associado à sua conta.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
               <div className="p-3.5 bg-slate-50 dark:bg-zinc-850/60 border border-slate-100 dark:border-zinc-800/80 rounded-2xl text-[11px] space-y-1">
-                <span className="font-black text-slate-700 dark:text-zinc-300 block uppercase tracking-wider text-[10px]">1. Firebase Integration</span>
+                <span className="font-black text-slate-700 dark:text-zinc-300 block uppercase tracking-wider text-[10px]">1. Sincronização Ativa</span>
                 <p className="text-gray-400 dark:text-zinc-500 leading-normal">
-                  Utilize o SDK do Firebase em <strong className="font-semibold">/src/services/dbService.ts</strong> para criar coleções auto-syncadas.
+                  Todas as suas criações, edições e exclusões são salvas na nuvem instantaneamente e estão disponíveis em qualquer dispositivo.
                 </p>
               </div>
               <div className="p-3.5 bg-slate-50 dark:bg-zinc-850/60 border border-slate-100 dark:border-zinc-800/80 rounded-2xl text-[11px] space-y-1">
-                <span className="font-black text-slate-700 dark:text-zinc-300 block uppercase tracking-wider text-[10px]">2. Custom API Integration</span>
+                <span className="font-black text-slate-700 dark:text-zinc-300 block uppercase tracking-wider text-[10px]">2. Segurança de Dados</span>
                 <p className="text-gray-400 dark:text-zinc-500 leading-normal">
-                  Basta trocar as requisições locais por chamadas HTTP utilizando <strong className="font-semibold">fetch/axios</strong> conectando ao seu backend Express.
+                  As regras de segurança do Firestore e a autenticação do Firebase garantem que apenas você tenha acesso às suas finanças.
                 </p>
               </div>
             </div>
