@@ -16,6 +16,17 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 // Helper to generate IDs
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
+// Helper to sanitize undefined values before saving to Firestore
+const cleanData = <T extends Record<string, any>>(obj: T): T => {
+  const cleaned = {} as any;
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] !== undefined) {
+      cleaned[key] = obj[key];
+    }
+  });
+  return cleaned;
+};
+
 export const dbService = {
   // --- USUARIOS ---
   async syncUsuario(userId: string, email: string, nome: string): Promise<Usuario> {
@@ -95,7 +106,7 @@ export const dbService = {
     };
     const path = `clientes/${id}`;
     try {
-      await setDoc(doc(db, 'clientes', id), cliente);
+      await setDoc(doc(db, 'clientes', id), cleanData(cliente));
       return cliente;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -106,7 +117,7 @@ export const dbService = {
   async updateCliente(id: string, updates: Partial<Omit<Cliente, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
     const path = `clientes/${id}`;
     try {
-      await updateDoc(doc(db, 'clientes', id), updates);
+      await updateDoc(doc(db, 'clientes', id), cleanData(updates));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -151,7 +162,7 @@ export const dbService = {
     };
     const path = `projetos/${id}`;
     try {
-      await setDoc(doc(db, 'projetos', id), novoProjeto);
+      await setDoc(doc(db, 'projetos', id), cleanData(novoProjeto));
       return novoProjeto;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -162,7 +173,7 @@ export const dbService = {
   async updateProjeto(id: string, updates: Partial<Omit<Projeto, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
     const path = `projetos/${id}`;
     try {
-      await updateDoc(doc(db, 'projetos', id), updates);
+      await updateDoc(doc(db, 'projetos', id), cleanData(updates));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -207,7 +218,7 @@ export const dbService = {
     };
     const path = `recebimentos/${id}`;
     try {
-      await setDoc(doc(db, 'recebimentos', id), novoRecebimento);
+      await setDoc(doc(db, 'recebimentos', id), cleanData(novoRecebimento));
       return novoRecebimento;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -218,7 +229,7 @@ export const dbService = {
   async updateRecebimento(id: string, updates: Partial<Omit<Recebimento, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
     const path = `recebimentos/${id}`;
     try {
-      await updateDoc(doc(db, 'recebimentos', id), updates);
+      await updateDoc(doc(db, 'recebimentos', id), cleanData(updates));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
