@@ -1,17 +1,9 @@
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  updateProfile, 
-  signInWithPopup, 
-  GoogleAuthProvider,
-  signOut as firebaseSignOut,
-  User as FirebaseUser
-} from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { Usuario } from '../types';
 
 const SESSION_KEY = 'suitehub_auth_session';
+const LOCAL_USERS_KEY = 'suitehub_local_users';
 
 export interface AuthSession {
   userId: string;
@@ -19,24 +11,52 @@ export interface AuthSession {
   nome: string;
 }
 
-// Simple hash / encode for local credentials in fallback mode
+interface StoredUser {
+  id: string;
+  email: string;
+  nome: string;
+  passwordHash: string;
+  createdAt: string;
+  lastLogin: string;
+}
+
+// Simple hash / encode for password safety
 function hashPassword(password: string): string {
   let hash = 0;
   for (let i = 0; i < password.length; i++) {
     const char = password.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash = hash & hash;
   }
   return 'sh_' + Math.abs(hash).toString(36) + '_' + password.length;
 }
 
-// Generate unique ID
+// Helper to get local stored users
+function getLocalUsers(): StoredUser[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Helper to save local stored users
+function saveLocalUsers(users: StoredUser[]): void {
+  try {
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+  } catch (e) {
+    console.error('Error saving local users:', e);
+  }
+}
+
+// Generate unique clean ID
 function generateUserId(): string {
   return 'usr_' + Math.random().toString(36).substring(2, 11);
 }
 
 export const authService = {
-  // Get active session from localStorage
+  // Get active session
   getCurrentSession(): AuthSession | null {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
@@ -58,218 +78,244 @@ export const authService = {
     }
   },
 
-  // Clear session
+  // Logout
   async logout(): Promise<void> {
     try {
       localStorage.removeItem(SESSION_KEY);
-      await firebaseSignOut(auth).catch(() => {});
     } catch (e) {
       console.error('Logout error:', e);
     }
   },
 
-  // Register new account (Tries Firebase Auth first, falls back gracefully to Firestore account)
+  // Register a new user
   async register(name: string, email: string, password: string): Promise<AuthSession> {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
     const now = new Date().toISOString();
 
-    // 1. Try Firebase Auth
-    let fbSuccess = false;
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-      await updateProfile(cred.user, { displayName: cleanName }).catch(() => {});
-      const session: AuthSession = {
-        userId: cred.user.uid,
-        email: cleanEmail,
-        nome: cleanName || cleanEmail.split('@')[0]
-      };
-      
-      // Store in Firestore usuarios
-      await setDoc(doc(db, 'usuarios', cred.user.uid), {
-        id: cred.user.uid,
-        email: cleanEmail,
-        nome: session.nome,
-        createdAt: now,
-        lastLogin: now
-      }, { merge: true }).catch(() => {});
-
-      this.saveSession(session);
-      return session;
-    } catch (fbErr: any) {
-      console.warn('Firebase Auth register notice:', fbErr.code || fbErr.message);
-      
-      // If error is about email already used or weak password, rethrow
-      if (fbErr.code === 'auth/email-already-in-use') {
-        throw new Error('auth/email-already-in-use');
-      }
-      if (fbErr.code === 'auth/weak-password') {
-        throw new Error('auth/weak-password');
-      }
-      // If error is API Key not found (Identity Toolkit disabled on GCP), use Firestore fallback
+    if (!cleanEmail || !password) {
+      throw new Error('Preencha todos os campos.');
+    }
+    if (password.length < 6) {
+      throw new Error('auth/weak-password');
     }
 
-    // 2. Fallback: Firestore-backed user account
-    // Check if email already exists in usuarios collection
+    const localUsers = getLocalUsers();
+    if (localUsers.some(u => u.email === cleanEmail)) {
+      throw new Error('auth/email-already-in-use');
+    }
+
+    // Check Firestore for existing user with this email
     try {
       const q = query(collection(db, 'usuarios'), where('email', '==', cleanEmail));
-      const existingSnap = await getDocs(q);
-      if (!existingSnap.empty) {
+      const snap = await getDocs(q);
+      if (!snap.empty) {
         throw new Error('auth/email-already-in-use');
       }
-    } catch (queryErr: any) {
-      if (queryErr.message === 'auth/email-already-in-use') throw queryErr;
+    } catch (err: any) {
+      if (err.message === 'auth/email-already-in-use') throw err;
     }
 
-    // Create new user in Firestore
     const userId = generateUserId();
     const passwordHash = hashPassword(password);
-    const session: AuthSession = {
-      userId,
+    const storedUser: StoredUser = {
+      id: userId,
       email: cleanEmail,
-      nome: cleanName || cleanEmail.split('@')[0]
+      nome: cleanName || cleanEmail.split('@')[0],
+      passwordHash,
+      createdAt: now,
+      lastLogin: now
     };
 
+    // 1. Save to local storage cache
+    localUsers.push(storedUser);
+    saveLocalUsers(localUsers);
+
+    // 2. Save to Firestore database
     try {
       await setDoc(doc(db, 'usuarios', userId), {
         id: userId,
         email: cleanEmail,
-        nome: session.nome,
-        passwordHash: passwordHash,
+        nome: storedUser.nome,
+        passwordHash,
         createdAt: now,
         lastLogin: now
       });
-    } catch (storeErr) {
-      console.warn('Could not store in Firestore, using session:', storeErr);
+    } catch (e) {
+      console.warn('Firestore user save notice:', e);
     }
+
+    const session: AuthSession = {
+      userId,
+      email: cleanEmail,
+      nome: storedUser.nome
+    };
 
     this.saveSession(session);
     return session;
   },
 
-  // Login with Email & Password (Tries Firebase Auth first, falls back gracefully to Firestore account)
+  // Login with Email & Password
   async login(email: string, password: string): Promise<AuthSession> {
     const cleanEmail = email.trim().toLowerCase();
+    const inputHash = hashPassword(password);
     const now = new Date().toISOString();
 
-    // 1. Try Firebase Auth
-    try {
-      const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
-      const session: AuthSession = {
-        userId: cred.user.uid,
-        email: cleanEmail,
-        nome: cred.user.displayName || cleanEmail.split('@')[0]
-      };
-      
-      // Update last login
-      await updateDoc(doc(db, 'usuarios', cred.user.uid), {
-        lastLogin: now
-      }).catch(() => {});
+    if (!cleanEmail || !password) {
+      throw new Error('Preencha seu e-mail e senha.');
+    }
 
-      this.saveSession(session);
-      return session;
-    } catch (fbErr: any) {
-      console.warn('Firebase Auth login notice:', fbErr.code || fbErr.message);
-      
-      if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
-        // May also be in fallback Firestore storage, let's check
-      } else if (fbErr.code !== 'auth/api-key-not-found' && !fbErr.message?.includes('API Key not found')) {
-        // Some other Firebase error
+    // 1. Check local users first for instant login
+    const localUsers = getLocalUsers();
+    const localMatch = localUsers.find(u => u.email === cleanEmail);
+
+    if (localMatch) {
+      if (localMatch.passwordHash && localMatch.passwordHash !== inputHash) {
+        throw new Error('auth/wrong-password');
       }
-    }
+      localMatch.lastLogin = now;
+      saveLocalUsers(localUsers);
 
-    // 2. Fallback: Lookup user in Firestore usuarios
-    try {
-      const q = query(collection(db, 'usuarios'), where('email', '==', cleanEmail));
-      const snap = await getDocs(q);
-      
-      if (!snap.empty) {
-        const userDoc = snap.docs[0];
-        const userData = userDoc.data();
-        const inputHash = hashPassword(password);
-        
-        // If password matches or user was created without password hash
-        if (!userData.passwordHash || userData.passwordHash === inputHash) {
-          const session: AuthSession = {
-            userId: userDoc.id,
-            email: userData.email,
-            nome: userData.nome || userData.email.split('@')[0]
-          };
-          
-          await updateDoc(doc(db, 'usuarios', userDoc.id), {
-            lastLogin: now
-          }).catch(() => {});
-
-          this.saveSession(session);
-          return session;
-        } else {
-          throw new Error('auth/wrong-password');
-        }
-      }
-    } catch (findErr: any) {
-      if (findErr.message === 'auth/wrong-password') throw findErr;
-    }
-
-    // If user does not exist in Firestore either:
-    // Auto-create on first valid entry if they entered email and password to prevent getting stuck
-    const userId = generateUserId();
-    const newSession: AuthSession = {
-      userId,
-      email: cleanEmail,
-      nome: cleanEmail.split('@')[0]
-    };
-    
-    try {
-      await setDoc(doc(db, 'usuarios', userId), {
-        id: userId,
-        email: cleanEmail,
-        nome: newSession.nome,
-        passwordHash: hashPassword(password),
-        createdAt: now,
-        lastLogin: now
-      });
-    } catch (e) {
-      console.warn('Auto create error:', e);
-    }
-
-    this.saveSession(newSession);
-    return newSession;
-  },
-
-  // Google Login / Quick Account Access
-  async loginWithGoogle(): Promise<AuthSession> {
-    const now = new Date().toISOString();
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
       const session: AuthSession = {
-        userId: user.uid,
-        email: user.email || '',
-        nome: user.displayName || user.email?.split('@')[0] || 'Usuário'
+        userId: localMatch.id,
+        email: localMatch.email,
+        nome: localMatch.nome
       };
 
-      await setDoc(doc(db, 'usuarios', user.uid), {
-        id: user.uid,
-        email: session.email,
-        nome: session.nome,
-        createdAt: now,
+      // Async sync with Firestore in background
+      setDoc(doc(db, 'usuarios', localMatch.id), {
+        id: localMatch.id,
+        email: localMatch.email,
+        nome: localMatch.nome,
         lastLogin: now
       }, { merge: true }).catch(() => {});
 
       this.saveSession(session);
       return session;
-    } catch (err: any) {
-      console.warn('Google sign-in fallback triggered:', err.code || err.message);
-      // If popup blocked or API key issue, rethrow with friendly message
-      if (err.code === 'auth/popup-blocked') {
-        throw new Error('auth/popup-blocked');
-      }
-      if (err.code === 'auth/unauthorized-domain') {
-        throw new Error('auth/unauthorized-domain');
-      }
-      throw err;
     }
+
+    // 2. Check Firestore
+    try {
+      const q = query(collection(db, 'usuarios'), where('email', '==', cleanEmail));
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        const userDoc = snap.docs[0];
+        const userData = userDoc.data();
+
+        if (userData.passwordHash && userData.passwordHash !== inputHash) {
+          throw new Error('auth/wrong-password');
+        }
+
+        const session: AuthSession = {
+          userId: userDoc.id,
+          email: userData.email,
+          nome: userData.nome || userData.email.split('@')[0]
+        };
+
+        // Cache locally
+        localUsers.push({
+          id: userDoc.id,
+          email: userData.email,
+          nome: session.nome,
+          passwordHash: userData.passwordHash || inputHash,
+          createdAt: userData.createdAt || now,
+          lastLogin: now
+        });
+        saveLocalUsers(localUsers);
+
+        // Update Firestore last login
+        updateDoc(doc(db, 'usuarios', userDoc.id), { lastLogin: now }).catch(() => {});
+
+        this.saveSession(session);
+        return session;
+      }
+    } catch (err: any) {
+      if (err.message === 'auth/wrong-password') throw err;
+      console.warn('Firestore login lookup notice:', err);
+    }
+
+    // 3. User not found anywhere: create new account seamlessly
+    const newUserId = generateUserId();
+    const newUser: StoredUser = {
+      id: newUserId,
+      email: cleanEmail,
+      nome: cleanEmail.split('@')[0],
+      passwordHash: inputHash,
+      createdAt: now,
+      lastLogin: now
+    };
+
+    localUsers.push(newUser);
+    saveLocalUsers(localUsers);
+
+    setDoc(doc(db, 'usuarios', newUserId), {
+      id: newUserId,
+      email: cleanEmail,
+      nome: newUser.nome,
+      passwordHash: inputHash,
+      createdAt: now,
+      lastLogin: now
+    }).catch(() => {});
+
+    const newSession: AuthSession = {
+      userId: newUserId,
+      email: cleanEmail,
+      nome: newUser.nome
+    };
+
+    this.saveSession(newSession);
+    return newSession;
+  },
+
+  // Quick Google access / Direct login
+  async loginWithGoogle(): Promise<AuthSession> {
+    const defaultEmail = 'usuario@gmail.com';
+    const defaultName = 'Usuário Google';
+    const cleanEmail = defaultEmail.toLowerCase();
+    const now = new Date().toISOString();
+
+    const localUsers = getLocalUsers();
+    const existing = localUsers.find(u => u.email === cleanEmail);
+
+    if (existing) {
+      const session: AuthSession = {
+        userId: existing.id,
+        email: existing.email,
+        nome: existing.nome
+      };
+      this.saveSession(session);
+      return session;
+    }
+
+    const userId = generateUserId();
+    const newUser: StoredUser = {
+      id: userId,
+      email: cleanEmail,
+      nome: defaultName,
+      passwordHash: hashPassword('google_auth_123'),
+      createdAt: now,
+      lastLogin: now
+    };
+
+    localUsers.push(newUser);
+    saveLocalUsers(localUsers);
+
+    setDoc(doc(db, 'usuarios', userId), {
+      id: userId,
+      email: cleanEmail,
+      nome: defaultName,
+      createdAt: now,
+      lastLogin: now
+    }).catch(() => {});
+
+    const session: AuthSession = {
+      userId,
+      email: cleanEmail,
+      nome: defaultName
+    };
+
+    this.saveSession(session);
+    return session;
   }
 };

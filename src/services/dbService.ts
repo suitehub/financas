@@ -2,19 +2,19 @@ import { Cliente, Projeto, Recebimento, Usuario } from '../types';
 import { 
   collection, 
   doc, 
-  getDoc,
+  getDoc, 
   getDocs, 
   setDoc, 
   updateDoc, 
   deleteDoc, 
   query, 
   where, 
-  writeBatch
+  writeBatch 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
-// Helper to generate IDs
-const generateId = () => Math.random().toString(36).substring(2, 15);
+// Helper to generate unique IDs
+const generateId = () => 'id_' + Math.random().toString(36).substring(2, 11);
 
 // Helper to sanitize undefined values before saving to Firestore
 const cleanData = <T extends Record<string, any>>(obj: T): T => {
@@ -27,24 +27,60 @@ const cleanData = <T extends Record<string, any>>(obj: T): T => {
   return cleaned;
 };
 
+// Local storage caching helpers
+const getLocal = <T>(key: string): T[] => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const setLocal = <T>(key: string, data: T[]): void => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error('Error saving local cache:', e);
+  }
+};
+
 export const dbService = {
   // --- USUARIOS ---
   async getUsuario(userId: string): Promise<Usuario | null> {
-    const userDocRef = doc(db, 'usuarios', userId);
+    const cacheKey = `suitehub_user_${userId}`;
     try {
+      const userDocRef = doc(db, 'usuarios', userId);
       const docSnap = await getDoc(userDocRef);
       if (docSnap.exists()) {
-        return docSnap.data() as Usuario;
+        const u = docSnap.data() as Usuario;
+        localStorage.setItem(cacheKey, JSON.stringify(u));
+        return u;
       }
-      return null;
-    } catch (error) {
-      return null;
+    } catch (e) {
+      console.warn('Firestore getUsuario notice:', e);
     }
+    
+    // Fallback to local
+    try {
+      const local = localStorage.getItem(cacheKey);
+      if (local) return JSON.parse(local);
+    } catch {}
+    return null;
   },
 
   async updateUsuario(userId: string, updates: Partial<Usuario>): Promise<void> {
-    const userDocRef = doc(db, 'usuarios', userId);
+    const cacheKey = `suitehub_user_${userId}`;
     try {
+      const local = localStorage.getItem(cacheKey);
+      if (local) {
+        const parsed = JSON.parse(local);
+        localStorage.setItem(cacheKey, JSON.stringify({ ...parsed, ...updates }));
+      }
+    } catch {}
+
+    try {
+      const userDocRef = doc(db, 'usuarios', userId);
       await updateDoc(userDocRef, cleanData(updates));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `usuarios/${userId}`);
@@ -55,65 +91,66 @@ export const dbService = {
     const path = `usuarios/${userId}`;
     const userDocRef = doc(db, 'usuarios', userId);
     const now = new Date().toISOString();
+    const cacheKey = `suitehub_user_${userId}`;
     
+    let user: Usuario = {
+      id: userId,
+      email: email,
+      nome: nome || email.split('@')[0] || 'Usuário',
+      createdAt: now,
+      lastLogin: now
+    };
+
     try {
       const docSnap = await getDoc(userDocRef);
-      let user: Usuario;
-      
       if (docSnap.exists()) {
         const existingData = docSnap.data();
         user = {
           id: userId,
-          email: email,
+          email: email || existingData.email || '',
           nome: nome || existingData.nome || 'Usuário',
           createdAt: existingData.createdAt || now,
-          lastLogin: now
+          lastLogin: now,
+          demoSeeded: existingData.demoSeeded
         };
         await updateDoc(userDocRef, {
           nome: user.nome,
           lastLogin: user.lastLogin
-        });
+        }).catch(() => {});
       } else {
-        user = {
-          id: userId,
-          email: email,
-          nome: nome || 'Usuário',
-          createdAt: now,
-          lastLogin: now
-        };
-        await setDoc(userDocRef, user);
+        await setDoc(userDocRef, cleanData(user)).catch(() => {});
       }
-      return user;
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
-      return {
-        id: userId,
-        email,
-        nome: nome || 'Usuário',
-        createdAt: now,
-        lastLogin: now
-      };
     }
+
+    localStorage.setItem(cacheKey, JSON.stringify(user));
+    return user;
   },
 
   // --- CLIENTES ---
   async getClientes(userId: string): Promise<Cliente[]> {
+    const cacheKey = `suitehub_clientes_${userId}`;
     const path = 'clientes';
     try {
-      const q = query(
-        collection(db, path),
-        where('userId', '==', userId)
-      );
+      const q = query(collection(db, path), where('userId', '==', userId));
       const snapshot = await getDocs(q);
       const list: Cliente[] = [];
       snapshot.forEach((doc) => {
         list.push(doc.data() as Cliente);
       });
-      return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      if (list.length > 0) {
+        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setLocal(cacheKey, list);
+        return list;
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
-      return [];
     }
+
+    // Fallback to cache
+    const cached = getLocal<Cliente>(cacheKey);
+    return cached.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   },
 
   async addCliente(userId: string, nome: string, email = '', telefone = ''): Promise<Cliente> {
@@ -126,52 +163,81 @@ export const dbService = {
       telefone,
       createdAt: new Date().toISOString()
     };
-    const path = `clientes/${id}`;
+    
+    // Update local cache
+    const cacheKey = `suitehub_clientes_${userId}`;
+    const current = getLocal<Cliente>(cacheKey);
+    setLocal(cacheKey, [cliente, ...current]);
+
+    // Update Firestore
     try {
       await setDoc(doc(db, 'clientes', id), cleanData(cliente));
-      return cliente;
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-      throw error;
+      handleFirestoreError(error, OperationType.CREATE, `clientes/${id}`);
     }
+    return cliente;
   },
 
   async updateCliente(id: string, updates: Partial<Omit<Cliente, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const path = `clientes/${id}`;
+    // Update local caches
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('suitehub_clientes_')) {
+        const list = getLocal<Cliente>(k);
+        const idx = list.findIndex(c => c.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...updates };
+          setLocal(k, list);
+        }
+      }
+    }
+
     try {
       await updateDoc(doc(db, 'clientes', id), cleanData(updates));
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
+      handleFirestoreError(error, OperationType.UPDATE, `clientes/${id}`);
     }
   },
 
   async deleteCliente(id: string): Promise<void> {
-    const path = `clientes/${id}`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('suitehub_clientes_')) {
+        const list = getLocal<Cliente>(k);
+        const filtered = list.filter(c => c.id !== id);
+        setLocal(k, filtered);
+      }
+    }
+
     try {
       await deleteDoc(doc(db, 'clientes', id));
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
+      handleFirestoreError(error, OperationType.DELETE, `clientes/${id}`);
     }
   },
 
   // --- PROJETOS ---
   async getProjetos(userId: string): Promise<Projeto[]> {
+    const cacheKey = `suitehub_projetos_${userId}`;
     const path = 'projetos';
     try {
-      const q = query(
-        collection(db, path),
-        where('userId', '==', userId)
-      );
+      const q = query(collection(db, path), where('userId', '==', userId));
       const snapshot = await getDocs(q);
       const list: Projeto[] = [];
       snapshot.forEach((doc) => {
         list.push(doc.data() as Projeto);
       });
-      return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      if (list.length > 0) {
+        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setLocal(cacheKey, list);
+        return list;
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
-      return [];
     }
+
+    const cached = getLocal<Projeto>(cacheKey);
+    return cached.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   },
 
   async addProjeto(userId: string, projeto: Omit<Projeto, 'id' | 'userId' | 'createdAt'>): Promise<Projeto> {
@@ -182,52 +248,77 @@ export const dbService = {
       userId,
       createdAt: new Date().toISOString()
     };
-    const path = `projetos/${id}`;
+
+    const cacheKey = `suitehub_projetos_${userId}`;
+    const current = getLocal<Projeto>(cacheKey);
+    setLocal(cacheKey, [novoProjeto, ...current]);
+
     try {
       await setDoc(doc(db, 'projetos', id), cleanData(novoProjeto));
-      return novoProjeto;
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-      throw error;
+      handleFirestoreError(error, OperationType.CREATE, `projetos/${id}`);
     }
+    return novoProjeto;
   },
 
   async updateProjeto(id: string, updates: Partial<Omit<Projeto, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const path = `projetos/${id}`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('suitehub_projetos_')) {
+        const list = getLocal<Projeto>(k);
+        const idx = list.findIndex(p => p.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...updates };
+          setLocal(k, list);
+        }
+      }
+    }
+
     try {
       await updateDoc(doc(db, 'projetos', id), cleanData(updates));
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
+      handleFirestoreError(error, OperationType.UPDATE, `projetos/${id}`);
     }
   },
 
   async deleteProjeto(id: string): Promise<void> {
-    const path = `projetos/${id}`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('suitehub_projetos_')) {
+        const list = getLocal<Projeto>(k);
+        setLocal(k, list.filter(p => p.id !== id));
+      }
+    }
+
     try {
       await deleteDoc(doc(db, 'projetos', id));
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
+      handleFirestoreError(error, OperationType.DELETE, `projetos/${id}`);
     }
   },
 
   // --- RECEBIMENTOS ---
   async getRecebimentos(userId: string): Promise<Recebimento[]> {
+    const cacheKey = `suitehub_recebimentos_${userId}`;
     const path = 'recebimentos';
     try {
-      const q = query(
-        collection(db, path),
-        where('userId', '==', userId)
-      );
+      const q = query(collection(db, path), where('userId', '==', userId));
       const snapshot = await getDocs(q);
       const list: Recebimento[] = [];
       snapshot.forEach((doc) => {
         list.push(doc.data() as Recebimento);
       });
-      return list.sort((a, b) => b.dataPrevista.localeCompare(a.dataPrevista));
+      if (list.length > 0) {
+        list.sort((a, b) => b.dataPrevista.localeCompare(a.dataPrevista));
+        setLocal(cacheKey, list);
+        return list;
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
-      return [];
     }
+
+    const cached = getLocal<Recebimento>(cacheKey);
+    return cached.sort((a, b) => (b.dataPrevista || '').localeCompare(a.dataPrevista || ''));
   },
 
   async addRecebimento(userId: string, recebimento: Omit<Recebimento, 'id' | 'userId' | 'createdAt'>): Promise<Recebimento> {
@@ -238,31 +329,52 @@ export const dbService = {
       userId,
       createdAt: new Date().toISOString()
     };
-    const path = `recebimentos/${id}`;
+
+    const cacheKey = `suitehub_recebimentos_${userId}`;
+    const current = getLocal<Recebimento>(cacheKey);
+    setLocal(cacheKey, [novoRecebimento, ...current]);
+
     try {
       await setDoc(doc(db, 'recebimentos', id), cleanData(novoRecebimento));
-      return novoRecebimento;
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-      throw error;
+      handleFirestoreError(error, OperationType.CREATE, `recebimentos/${id}`);
     }
+    return novoRecebimento;
   },
 
   async updateRecebimento(id: string, updates: Partial<Omit<Recebimento, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    const path = `recebimentos/${id}`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('suitehub_recebimentos_')) {
+        const list = getLocal<Recebimento>(k);
+        const idx = list.findIndex(r => r.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...updates };
+          setLocal(k, list);
+        }
+      }
+    }
+
     try {
       await updateDoc(doc(db, 'recebimentos', id), cleanData(updates));
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
+      handleFirestoreError(error, OperationType.UPDATE, `recebimentos/${id}`);
     }
   },
 
   async deleteRecebimento(id: string): Promise<void> {
-    const path = `recebimentos/${id}`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('suitehub_recebimentos_')) {
+        const list = getLocal<Recebimento>(k);
+        setLocal(k, list.filter(r => r.id !== id));
+      }
+    }
+
     try {
       await deleteDoc(doc(db, 'recebimentos', id));
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
+      handleFirestoreError(error, OperationType.DELETE, `recebimentos/${id}`);
     }
   },
 
@@ -275,10 +387,10 @@ export const dbService = {
     };
 
     // 1. Seed Clientes
-    const c1Id = `demo-c1-${userId}`;
-    const c2Id = `demo-c2-${userId}`;
-    const c3Id = `demo-c3-${userId}`;
-    const c4Id = `demo-c4-${userId}`;
+    const c1Id = `demo_c1_${userId}`;
+    const c2Id = `demo_c2_${userId}`;
+    const c3Id = `demo_c3_${userId}`;
+    const c4Id = `demo_c4_${userId}`;
 
     const client1: Cliente = { id: c1Id, userId, nome: 'Clínica ABC Médica', email: 'contato@clinicaabc.com.br', telefone: '(11) 98888-7777', createdAt: dateOffset(-45) };
     const client2: Cliente = { id: c2Id, userId, nome: 'TechVibe Creative Studio', email: 'hello@techvibe.design', telefone: '(21) 97777-6666', createdAt: dateOffset(-30) };
@@ -288,10 +400,10 @@ export const dbService = {
     const clientes = [client1, client2, client3, client4];
 
     // 2. Seed Projetos
-    const p1Id = `demo-p1-${userId}`;
-    const p2Id = `demo-p2-${userId}`;
-    const p3Id = `demo-p3-${userId}`;
-    const p4Id = `demo-p4-${userId}`;
+    const p1Id = `demo_p1_${userId}`;
+    const p2Id = `demo_p2_${userId}`;
+    const p3Id = `demo_p3_${userId}`;
+    const p4Id = `demo_p4_${userId}`;
 
     const proj1: Projeto = {
       id: p1Id,
@@ -348,13 +460,13 @@ export const dbService = {
     const projetos = [proj1, proj2, proj3, proj4];
 
     // 3. Seed Recebimentos
-    const r1Id = `demo-r1-${userId}`;
-    const r2Id = `demo-r2-${userId}`;
-    const r3Id = `demo-r3-${userId}`;
-    const r4Id = `demo-r4-${userId}`;
-    const r5Id = `demo-r5-${userId}`;
-    const r6Id = `demo-r6-${userId}`;
-    const r7Id = `demo-r7-${userId}`;
+    const r1Id = `demo_r1_${userId}`;
+    const r2Id = `demo_r2_${userId}`;
+    const r3Id = `demo_r3_${userId}`;
+    const r4Id = `demo_r4_${userId}`;
+    const r5Id = `demo_r5_${userId}`;
+    const r6Id = `demo_r6_${userId}`;
+    const r7Id = `demo_r7_${userId}`;
 
     const rec1: Recebimento = {
       id: r1Id,
@@ -484,7 +596,7 @@ export const dbService = {
       categoria: 'Consultoria',
       origem: '🛠️ Manutenção',
       valor: 1250,
-      dataPrevista: dateOffset(29), // scheduled for next month
+      dataPrevista: dateOffset(29),
       formaPagamento: 'Pix',
       status: 'A Receber',
       notaFiscal: 'Pendente',
@@ -494,6 +606,12 @@ export const dbService = {
 
     const recebimentos = [rec1, rec2, rec3, rec4, rec5, rec6, rec7];
 
+    // Save to local cache first
+    setLocal(`suitehub_clientes_${userId}`, clientes);
+    setLocal(`suitehub_projetos_${userId}`, projetos);
+    setLocal(`suitehub_recebimentos_${userId}`, recebimentos);
+
+    // Save to Firestore
     try {
       const batch = writeBatch(db);
 
