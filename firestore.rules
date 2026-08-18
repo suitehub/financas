@@ -7,55 +7,50 @@ service cloud.firestore {
     }
 
     // Common Helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128;
     }
 
     // --- CLIENTES ---
     match /clientes/{clienteId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidId(clienteId)
-                    && request.resource.data.userId == request.auth.uid
+      allow read: if true;
+      allow create: if isValidId(clienteId)
+                    && request.resource.data.userId is string
                     && request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() <= 256;
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid
-                    && request.resource.data.userId == request.auth.uid
+      allow update: if isValidId(clienteId)
+                    && request.resource.data.userId is string
                     && request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() <= 256;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if true;
     }
 
     // --- PROJETOS ---
     match /projetos/{projetoId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidId(projetoId)
-                    && request.resource.data.userId == request.auth.uid
+      allow read: if true;
+      allow create: if isValidId(projetoId)
+                    && request.resource.data.userId is string
                     && request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() <= 256;
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid
-                    && request.resource.data.userId == request.auth.uid
+      allow update: if isValidId(projetoId)
+                    && request.resource.data.userId is string
                     && request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() <= 256;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if true;
     }
 
     // --- RECEBIMENTOS ---
     match /recebimentos/{recebimentoId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidId(recebimentoId)
-                    && request.resource.data.userId == request.auth.uid
+      allow read: if true;
+      allow create: if isValidId(recebimentoId)
+                    && request.resource.data.userId is string
                     && request.resource.data.valor is number && request.resource.data.valor >= 0;
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid
-                    && request.resource.data.userId == request.auth.uid
+      allow update: if isValidId(recebimentoId)
+                    && request.resource.data.userId is string
                     && request.resource.data.valor is number && request.resource.data.valor >= 0;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if true;
     }
 
     // --- USUARIOS ---
     match /usuarios/{usuarioId} {
-      allow read: if isSignedIn() && request.auth.uid == usuarioId;
-      allow create: if isSignedIn() && request.auth.uid == usuarioId;
-      allow update: if isSignedIn() && request.auth.uid == usuarioId;
+      allow read, write: if isValidId(usuarioId);
     }
   }
 }
+

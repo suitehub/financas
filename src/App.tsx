@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from './services/dbService';
+import { authService } from './services/authService';
 import { Cliente, Projeto, Recebimento, StatusProjetoType } from './types';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { doc, writeBatch } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 
@@ -80,9 +81,23 @@ export default function App() {
     localStorage.setItem('suitehub-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // Listen to Firebase auth state changes
+  // Listen to session & Firebase auth state changes
   useEffect(() => {
     setAuthLoading(true);
+
+    // 1. Restore local session if exists
+    const activeSession = authService.getCurrentSession();
+    if (activeSession) {
+      setUserId(activeSession.userId);
+      setUserName(activeSession.nome);
+      loadAllUserData(activeSession.userId).finally(() => {
+        setAuthLoading(false);
+      });
+    } else {
+      setAuthLoading(false);
+    }
+
+    // 2. Also sync with Firebase Auth if available
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
@@ -90,20 +105,18 @@ export default function App() {
           const syncedUser = await dbService.syncUsuario(user.uid, user.email || '', user.displayName || '');
           setUserId(user.uid);
           setUserName(syncedUser.nome);
+          authService.saveSession({
+            userId: user.uid,
+            email: user.email || '',
+            nome: syncedUser.nome
+          });
         } catch (err) {
           console.error("Error syncing user in database:", err);
           setUserId(user.uid);
           setUserName(user.displayName || user.email?.split('@')[0] || 'Usuário');
         }
         await loadAllUserData(user.uid);
-      } else {
-        setUserId(null);
-        setUserName('');
-        setClientes([]);
-        setProjetos([]);
-        setRecebimentos([]);
       }
-      setAuthLoading(false);
     });
 
     return () => unsubscribe();
@@ -141,23 +154,12 @@ export default function App() {
   const handleLoginSuccess = async (uid: string, name: string) => {
     setUserId(uid);
     setUserName(name);
-    
-    // Sync user during successful login manually if auth state is delayed
-    const currentUser = auth.currentUser;
-    if (currentUser) {
-      try {
-        const syncedUser = await dbService.syncUsuario(uid, currentUser.email || '', name);
-        setUserName(syncedUser.nome);
-      } catch (err) {
-        console.error("Error syncing user during login success:", err);
-      }
-    }
     await loadAllUserData(uid);
   };
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await authService.logout();
       setUserId(null);
       setUserName('');
       setClientes([]);

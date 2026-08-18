@@ -11,14 +11,7 @@ import {
   AlertCircle,
   Chrome
 } from 'lucide-react';
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  signInWithPopup,
-  GoogleAuthProvider
-} from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { authService } from '../services/authService';
 
 interface LoginScreenProps {
   onLoginSuccess: (userId: string, username: string) => void;
@@ -39,23 +32,16 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setSuccess(null);
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      onLoginSuccess(user.uid, user.displayName || user.email?.split('@')[0] || 'Usuário');
+      const session = await authService.loginWithGoogle();
+      onLoginSuccess(session.userId, session.nome);
     } catch (err: any) {
       console.error('Google login error:', err);
-      if (err.code === 'auth/popup-blocked') {
+      if (err.message === 'auth/popup-blocked' || err.code === 'auth/popup-blocked') {
         setError('O pop-up de login do Google foi bloqueado pelo navegador. Desbloqueie pop-ups ou utilize login por E-mail e Senha.');
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setError('Este domínio de preview ainda não está na lista de domínios autorizados do Google OAuth no Firebase Console. Utilize o cadastro e login por E-mail e Senha.');
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setError('A janela de autenticação do Google foi fechada antes da conclusão.');
-      } else if (err.code === 'auth/cancelled-popup-request') {
-        setError('A requisição de login foi cancelada.');
+      } else if (err.message === 'auth/unauthorized-domain' || err.code === 'auth/unauthorized-domain') {
+        setError('Este domínio ainda não está na lista de domínios autorizados do Google OAuth no Firebase Console. Utilize o cadastro e login por E-mail e Senha.');
       } else {
-        setError(err.message || 'Erro ao autenticar com o Google.');
+        setError('Utilize o cadastro e login por E-mail e Senha abaixo para acesso instantâneo.');
       }
     } finally {
       setLoading(false);
@@ -83,32 +69,25 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
     try {
       if (isRegister) {
-        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        await updateProfile(userCredential.user, {
-          displayName: name.trim()
-        });
+        const session = await authService.register(name.trim(), cleanEmail, password);
         setSuccess('Conta criada com sucesso! Entrando...');
-        const user = userCredential.user;
-        onLoginSuccess(user.uid, name.trim() || user.displayName || cleanEmail.split('@')[0] || 'Usuário');
+        setTimeout(() => {
+          onLoginSuccess(session.userId, session.nome);
+        }, 400);
       } else {
-        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-        const user = userCredential.user;
-        onLoginSuccess(user.uid, user.displayName || user.email?.split('@')[0] || 'Usuário');
+        const session = await authService.login(cleanEmail, password);
+        onLoginSuccess(session.userId, session.nome);
       }
     } catch (err: any) {
       console.error('Auth submit error:', err);
-      if (err.code === 'auth/email-already-in-use') {
+      if (err.message === 'auth/email-already-in-use' || err.code === 'auth/email-already-in-use') {
         setError('Este e-mail já está cadastrado. Tente entrar na aba "Entrar" ou use outro e-mail.');
-      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-login-credentials') {
-        setError('E-mail ou senha incorretos. Verifique suas credenciais ou crie uma conta na aba "Criar Conta".');
-      } else if (err.code === 'auth/weak-password') {
+      } else if (err.message === 'auth/wrong-password' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Senha incorreta para este e-mail. Por favor, tente novamente.');
+      } else if (err.message === 'auth/weak-password' || err.code === 'auth/weak-password') {
         setError('A senha deve ter pelo menos 6 caracteres.');
-      } else if (err.code === 'auth/invalid-email') {
-        setError('O formato do e-mail inserido é inválido.');
-      } else if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexão. Verifique sua internet e tente novamente.');
       } else {
-        setError(err.message || 'Ocorreu um erro ao processar sua solicitação.');
+        setError('Erro ao processar autenticação. Verifique os dados inseridos.');
       }
     } finally {
       setLoading(false);
