@@ -1,14 +1,14 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
   ignoreUndefinedProperties: true,
 }, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
-export const auth = getAuth();
+export const auth = getAuth(app);
 
 export enum OperationType {
   CREATE = 'create',

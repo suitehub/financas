@@ -40,12 +40,23 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       onLoginSuccess(user.uid, user.displayName || user.email?.split('@')[0] || 'Usuário');
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Erro ao fazer login com o Google.');
+      console.error('Google login error:', err);
+      if (err.code === 'auth/popup-blocked') {
+        setError('O pop-up de login do Google foi bloqueado pelo navegador. Desbloqueie pop-ups ou utilize login por E-mail e Senha.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError('Este domínio de preview ainda não está na lista de domínios autorizados do Google OAuth no Firebase Console. Utilize o cadastro e login por E-mail e Senha.');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setError('A janela de autenticação do Google foi fechada antes da conclusão.');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        setError('A requisição de login foi cancelada.');
+      } else {
+        setError(err.message || 'Erro ao autenticar com o Google.');
+      }
     } finally {
       setLoading(false);
     }
@@ -56,12 +67,14 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setError(null);
     setSuccess(null);
 
-    if (!email || !password) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !password) {
       setError('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
 
-    if (isRegister && !name) {
+    if (isRegister && !name.trim()) {
       setError('Por favor, preencha o seu nome completo.');
       return;
     }
@@ -70,27 +83,30 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
     try {
       if (isRegister) {
-        const userCredential = await createUserWithEmailAndPassword(auth, email.toLowerCase(), password);
+        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         await updateProfile(userCredential.user, {
-          displayName: name
+          displayName: name.trim()
         });
-        setSuccess('Cadastro realizado com sucesso! Você já pode entrar.');
-        setIsRegister(false);
-        setName('');
-        setPassword('');
+        setSuccess('Conta criada com sucesso! Entrando...');
+        const user = userCredential.user;
+        onLoginSuccess(user.uid, name.trim() || user.displayName || cleanEmail.split('@')[0] || 'Usuário');
       } else {
-        const userCredential = await signInWithEmailAndPassword(auth, email.toLowerCase(), password);
+        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
         const user = userCredential.user;
         onLoginSuccess(user.uid, user.displayName || user.email?.split('@')[0] || 'Usuário');
       }
     } catch (err: any) {
-      console.error(err);
+      console.error('Auth submit error:', err);
       if (err.code === 'auth/email-already-in-use') {
-        setError('Este e-mail já está cadastrado.');
-      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('E-mail ou senha incorretos.');
+        setError('Este e-mail já está cadastrado. Tente entrar na aba "Entrar" ou use outro e-mail.');
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-login-credentials') {
+        setError('E-mail ou senha incorretos. Verifique suas credenciais ou crie uma conta na aba "Criar Conta".');
       } else if (err.code === 'auth/weak-password') {
         setError('A senha deve ter pelo menos 6 caracteres.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('O formato do e-mail inserido é inválido.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Erro de conexão. Verifique sua internet e tente novamente.');
       } else {
         setError(err.message || 'Ocorreu um erro ao processar sua solicitação.');
       }
